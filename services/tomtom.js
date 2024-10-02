@@ -17,13 +17,10 @@ const { distance } = require("./geodatasource");
 const { stopcategories } = require("./yelpcategories");
 const qrate = require("qrate");
 
-// const TOMTOMAPIKEY = "";
 // Use a different API key for map frontend. The maps javascript web api uses the key on the frontend.
 // One for Map tiles only (with domain whitelisting set), which will be used at frontend to show a map.
 // Source https://devforum.tomtom.com/t/api-key-security/2938
 
-// const YELPAPIKEY =
-  // "";
 
 // Access the API keys from environment variables
 const TOMTOMAPIKEY = process.env.TOMTOM_API_KEY;
