@@ -21,6 +21,7 @@
     "forever": "^4.0.1",
     "jsonwebtoken": "^9.0.0",
     "qrate": "^1.2.1",
+    "stub-service": "^1.0.1",
     "winston": "^3.3.3"
   },
   "devDependencies": {

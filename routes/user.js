@@ -3,8 +3,10 @@
 /* eslint-disable no-unused-vars */
 /* eslint-disable new-cap */
 const express = require("express");
+require('dotenv').config();
 const bodyParser = require('body-parser');
 const {searchLocation, routebetweenLocations, locateStop, calculateStopsArray, reversegeocode, callRateLimitedAPI, restaurantcategories, regularcategories,default_yelpcategories,yelpcategories_alias_to_title,estimatestarttimesofstopsfromstate} =  require("../services/tomtom");
+const {gsearch} = require('../services/gfaker');
 const { logErrorMiddleware, returnError } = require('../errorHandler/errorHandler');
 const api400Error = require('../errorHandler/api400Error');
 const api500Error = require('../errorHandler/api500Error');
@@ -16,6 +18,23 @@ const MILETOMETER=1609.34;
 const app = express();
 app.use(express.json());
 //
+
+
+
+app.post('/fake/gsearch', (req, res) => {
+  try {
+  return gsearch(req,res);
+  }
+  catch (error) {
+    next(error);
+  }
+});
+
+app.get('/getsearchparam', (req, res) => {
+  const searchparam = process.env.TOMTOMAPIFRONTENDKEY; 
+  res.json({ searchparam });
+});
+
 
 app.get("/search", async (req, res, next) => {
   
