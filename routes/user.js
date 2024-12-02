@@ -23,7 +23,8 @@ app.use(express.json());
 
 app.post('/fake/gsearch', (req, res) => {
   try {
-  return gsearch(req,res);
+  const ret = gsearch(req,res);
+  return ret;
   }
   catch (error) {
     next(error);
@@ -34,7 +35,14 @@ app.get('/getsearchparam', (req, res) => {
   const searchparam = process.env.TOMTOMAPIFRONTENDKEY; 
   res.json({ searchparam });
 });
-
+app.get('/getgsearchparam', (req, res) => {
+  const searchparam = process.env.GOOGLE_JAVASCRIPT_KEY; 
+  res.json({ searchparam });
+});
+app.get('/getplacesprovider', (req, res) => {
+  const placesprovider = process.env.PLACES_PROVIDER; 
+  res.json({ placesprovider });
+});
 
 app.get("/search", async (req, res, next) => {
   
@@ -172,8 +180,8 @@ app.post("/locatestoparray", bodyParser.json(), async (req, res, next) => {
     // USERDEFINED STOPS are injected here
     location.push(...req.body.userdefinedstops);
     
-  console.log('location array:');
-  console.log(location);
+  // console.log('location array:');
+  // console.log(location);
 
     //The following code finds the start/end times for each stop center, so that that it can be used to search for only open POIs, in the step after that
     // {
@@ -220,15 +228,16 @@ app.post("/locatestoparray", bodyParser.json(), async (req, res, next) => {
         }
           // default search within 5 miles = 8046 meters
           let result = [];
-          result = await callRateLimitedAPI('poisearch',{latitude:eachlocation.latitude,longitude:eachlocation.longitude, radius:parseInt(DEFAULTSEARCHRADIUSINMILES*MILETOMETER), type:eachlocation.type, limit:50, offset:0,tags:eachlocation.tags, open_at:estlocationarrivaltime});
-        //  console.log(result)
+          result = await callRateLimitedAPI('poisearch',{latitude:eachlocation.latitude,longitude:eachlocation.longitude, radius:parseInt(DEFAULTSEARCHRADIUSINMILES*MILETOMETER), type:eachlocation.type, limit:50, offset:0,locationRestriction:{}, tags:eachlocation.tags, open_at:estlocationarrivaltime});
+          
         let poiresultsforthisstop = [];
-        
+         //console.log(result.businesses)
         if (typeof result.businesses!=='undefined'){
           result.businesses.map(poi=>{
+            
             if(poi.distance <= parseInt(DEFAULTSEARCHRADIUSINMILES*MILETOMETER)){
               poiresultsforthisstop.push(poi)
-            }
+            } //else poiresultsforthisstop.push(poi)
           })
         }
         
@@ -239,7 +248,13 @@ app.post("/locatestoparray", bodyParser.json(), async (req, res, next) => {
         eachlocation.poiselected = poiresultsforthisstop.length>0?[0,0]:[-1,-1]; // select first choice [0,0] as chosen poi option 
         eachlocation.poisearchexpandradius = poiresultsforthisstop.length>0?0:1;
         eachlocation.totalpoisfound = result.total || 0;
-         
+        //google api returns nextPageToken
+        if (typeof result.nextPageToken!=='undefined'){
+          eachlocation.nextPageToken = result.nextPageToken;
+        }
+        if (typeof result.locationRestriction!=='undefined'){
+          eachlocation.locationRestriction = result.locationRestriction;
+        }
          
         eachlocation.poisearchtags = eachlocation.tags;
           return;
@@ -282,11 +297,11 @@ app.post("/locatestoparray", bodyParser.json(), async (req, res, next) => {
 
 app.post("/poisearch", bodyParser.json(), async (req, res, next) => {
    console.log(`locating pois around individual stop at offset ${req.body.offset} `)
-  
+  let outresults={};
   let locations=[]
   try {
     let searchradius = req.body.radius || parseInt(DEFAULTSEARCHRADIUSINMILES*MILETOMETER) ;
-         let result = await callRateLimitedAPI('poisearch',{latitude:req.body.latitude,longitude:req.body.longitude, radius:searchradius.toFixed(0), type:req.body.type, limit:req.body.limit||50, offset:req.body.offset, tags:req.body.tags, open_at: req.body.open_at});
+         let result = await callRateLimitedAPI('poisearch',{latitude:req.body.latitude,longitude:req.body.longitude, radius:searchradius.toFixed(0), type:req.body.type, limit:req.body.limit||50, offset:req.body.offset, locationRestriction: req.body.locationRestriction, tags:req.body.tags, open_at: req.body.open_at});
         //  console.log(result)
 
         //Strangely Yelp api does not respect radius limits sometimes in non-zero offset calls.  
@@ -294,7 +309,18 @@ app.post("/poisearch", bodyParser.json(), async (req, res, next) => {
           if(poi.distance <= searchradius){
             locations.push(poi)
           }
-        })
+        });
+        outresults.locations = locations;
+        //google api returns nextPageToken
+        if (typeof result.nextPageToken!=='undefined'){
+          outresults.nextPageToken = result.nextPageToken;
+        }
+
+        if (typeof result.locationRestriction!=='undefined'){
+          outresults.locationRestriction = result.locationRestriction;
+        }
+        
+
          
       if (locations.length<=0)  {
          throw new api500Error(" No locations were found within search radius")
@@ -303,7 +329,7 @@ app.post("/poisearch", bodyParser.json(), async (req, res, next) => {
     next(error);
   }
   // console.log(`End locating individual stop`)
-  res.json(locations);
+  res.json(outresults);
 });
 
 app.use(logErrorMiddleware);

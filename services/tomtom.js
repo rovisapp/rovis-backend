@@ -16,6 +16,7 @@ const BaseError = require("../errorHandler/baseError");
 const { distance } = require("./geodatasource");
 const { stopcategories } = require("./yelpcategories");
 const qrate = require("qrate");
+const apiUsageTracker = require('./apiUsageTracker');
 
 // Use a different API key for map frontend. The maps javascript web api uses the key on the frontend.
 // One for Map tiles only (with domain whitelisting set), which will be used at frontend to show a map.
@@ -26,6 +27,7 @@ const qrate = require("qrate");
 const TOMTOMAPIKEY = process.env.TOMTOM_API_KEY;
 const YELPAPIKEY = process.env.YELP_API_KEY;
 
+const PLACESPROVIDER = process.env.PLACES_PROVIDER;
   const DEFAULTSEARCHRADIUSINMILES = 5;
 const MILETOMETER = 1609.34;
 
@@ -37,6 +39,8 @@ const TOMTOMAPISEARCHURL = "https://api.tomtom.com/search/2";
 const TOMTOMROUTINGURL = "https://api.tomtom.com/routing/1/calculateRoute";
 const TOMTOMREVERSEGEOCODE = "https://api.tomtom.com/search/2/reverseGeocode";
 const YELPBUSINESSSEARCHURL = "https://api.yelp.com/v3/businesses/search";
+const GFAKEPLACESSEARCHURL = `${process.env.APIDOMAIN || 'http://localhost:3070'}/api/user/fake/gsearch`;
+const GOOGLEPLACESSEARCHURL = 'https://places.googleapis.com/v1/places:searchText';
 
 // **************************************************
 // **************************************************
@@ -80,6 +84,7 @@ const APIWorker = async (param) => {
       param.data.type,
       param.data.limit,
       param.data.offset,
+      param.data.locationRestriction,
       param.data.tags,
       param.data.open_at
     );
@@ -224,6 +229,8 @@ const customtags_yelpcategories = (tags) =>{
   return yelpcategories;
 }
 
+
+
 const poisearch = async (
   latitude,
   longitude,
@@ -231,11 +238,225 @@ const poisearch = async (
   type,
   limit = 50,
   offset = 0,
+  locationRestriction={},
+  tags = [],
+  open_at =0
+) =>{
+  if(PLACESPROVIDER=='YELP')
+  return poisearchyelp(latitude,longitude,radius,type,limit,offset,locationRestriction,tags,open_at);
+else if(PLACESPROVIDER=='GOOGLE'){
+ return poisearchg(latitude,longitude,radius,type,limit,offset,locationRestriction,tags,open_at);
+}
+}
+
+
+const default_gcategories= (type) => {
+  let gcategories = "";
+  if (type.includes("meal")) {
+    gcategories += "restaurants,food,bars";
+  }
+  if (type.includes("rest")) {
+    gcategories = gcategories == "" ? "" : `${gcategories},`;
+    gcategories +=
+      "gas stations, grocery stores, convenience stores, rest stops, shopping mall, reststops, parking, service stations, ev charging stations,department stores, shopping centers, campgrounds, rvparks";
+  }
+  if (type.includes("day")) {
+    gcategories = gcategories == "" ? "" : `${gcategories},`;
+    gcategories =
+      "accommodation";
+  }
+  return gcategories;
+};
+
+
+function convertGooglePlaceToYelpPlace(googlePlace) {
+  //console.log(googlePlace)
+
+   return {
+     ...googlePlace,  // Spread the remaining attributes into the object
+       name: googlePlace.displayName.text,
+       location: {
+           display_address: [googlePlace.formattedAddress],
+           latitude: googlePlace.location.latitude,
+           longitude: googlePlace.location.longitude
+       },
+       rating: googlePlace.rating,
+       review_count: googlePlace.userRatingCount,
+       url: googlePlace.websiteUri,
+       distance: googlePlace.distance,
+       price: googlePlace.priceLevel,
+       coordinates: {
+           latitude: googlePlace.location.latitude,
+           longitude: googlePlace.location.longitude
+       },
+       categories: (googlePlace.types || []).map(type => ({
+         title: type
+     }))
+       
+   };
+}
+
+function getBoundingSquare(latitude, longitude, radiusinmeters) {
+    // Convert radius from meters to kilometers
+    const radiusInKm = radiusinmeters / 1000;
+
+  // Calculate the delta for latitude and longitude
+  const latDelta = radiusInKm / 111.11; // 111.11 km per degree of latitude
+  const lonDelta = radiusInKm / (111.11 * Math.cos((latitude * Math.PI) / 180));
+
+  // Calculate the low and high values for latitude and longitude
+  let lowLat = latitude - latDelta;
+  let highLat = latitude + latDelta;
+  let lowLon = longitude - lonDelta;
+  let highLon = longitude + lonDelta;
+
+  // Ensure the values are within the valid ranges
+  lowLat = Math.max(-90, lowLat);
+  highLat = Math.min(90, highLat);
+  lowLon = Math.max(-180, lowLon);
+  highLon = Math.min(180, highLon);
+
+  return {
+    rectangle: {
+      low: {
+        latitude: lowLat,
+        longitude: lowLon
+      },
+      high: {
+        latitude: highLat,
+        longitude: highLon
+      }
+    }
+  };
+}
+
+const poisearchg = async (
+  latitude,
+  longitude, 
+  radius = (DEFAULTSEARCHRADIUSINMILES * MILETOMETER).toFixed(0),
+  type,
+  limit = 50,
+  offset = 0,
+  locationRestriction = {},
+  tags = [],
+  open_at = 0
+) => {
+  if (type == 'userdefined') {
+      return [];
+  }
+
+  try {
+    let gtextquery = default_gcategories(type); // find default google categories from type (meal, rest or day)
+  // If extra search tags were passed, override gtextquery with the tags' respective categories.
+  console.log(tags);
+  if (tags.length > 0) {
+    gtextquery = tags.join(' or ');
+  }
+ 
+    
+      // Build query for gsearch endpoint
+      //  Update locationRestriction if is it  passed empty, other leave it as is
+      //console.log(locationRestriction)
+      locationRestriction = Object.getOwnPropertyNames(locationRestriction).length === 0?
+        getBoundingSquare(latitude,longitude, radius):
+        locationRestriction;
+        
+      const searchReq = {
+          headers: {
+              'X-Goog-Api-Key': process.env.GOOGLE_API_KEY,
+              'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.websiteUri,places.priceLevel,places.types,nextPageToken'
+          },
+          body: {
+            textQuery: gtextquery,
+            locationRestriction : locationRestriction,
+              // locationBias: {
+                
+              //     circle: {
+              //         center: {
+              //             latitude: latitude,
+              //             longitude: longitude
+              //         },
+              //         radius: radius
+              //     }
+              // },
+              rankPreference: 'RELEVANCE',
+              "pageSize": 20
+              //includedTypes: [type]
+          }
+      };
+      if(offset !=0){
+        searchReq.body.pageToken = offset.toString(); // pass offset as pageToken for pagination
+      }
+
+      // Increment the counter for Places SearchNearby
+      const method = 'google.maps.places.v1.Places.SearchText';
+      const currentCount = apiUsageTracker.incrementCount(method);
+      
+        console.log(searchReq.body);
+       console.log(latitude+' '+longitude+' '+radius);
+        console.log(JSON.stringify(searchReq.body.locationRestriction));
+      const { data, error } = await axios.post(
+        process.env.GFAKER=='1'?GFAKEPLACESSEARCHURL:GOOGLEPLACESSEARCHURL, 
+          searchReq.body,
+          {headers: searchReq.headers}
+      );
+      
+      // console.log(data)
+      // gsearch already returns Yelp-compatible format
+
+      
+       // Modify place attributes + Add distance attribute to each place
+       if (typeof data.places!=='undefined' && data.places.length >0){
+        data.places = data.places.map(place => {
+          const distfromcenter = distance(
+            place.location.latitude,
+            place.location.longitude,
+            latitude,
+            longitude,
+            "K"
+          ) * 1000;
+          //console.log(place.formattedAddress+' '+distfromcenter);
+          return convertGooglePlaceToYelpPlace({
+            ...place,
+            distance: distfromcenter,
+            
+          })
+        });
+       }
+       
+
+      return {
+          businesses: data.places||[],
+          total: data.places?.length||0,
+          nextPageToken: data.nextPageToken,
+          locationRestriction: locationRestriction
+      };
+
+  } catch (error) {
+      console.log(error.response?.data || error);
+      throw new BaseError(
+          "Failed to perform poisearch",
+          true, 
+          error.response?.status || 500,
+          `Failed to perform poisearch ${JSON.stringify(error.response?.data || error)}`
+      );
+  }
+};
+
+
+const poisearchyelp = async (
+  latitude,
+  longitude,
+  radius = (DEFAULTSEARCHRADIUSINMILES * MILETOMETER).toFixed(0),
+  type,
+  limit = 50,
+  offset = 0,
+  locationRestriction={},
   tags = [],
   open_at =0
 ) => {
   if(type=='userdefined'){
-    return [];
+    return {businesses:[]};
   }
   if (limit > 50) {
     console.log("Forcing search limit to 50 results");

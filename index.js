@@ -3,6 +3,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const logger = require('./logger/logger');
 const { logError, isOperationalError } = require('./errorHandler/errorHandler');
+const {getMapsApiUsage} = require('./services/gUsageActuals');
 
 const app = express();
 const port = 3070;
@@ -43,6 +44,7 @@ process.on('uncaughtException', (error) => {
 
 app.listen(port, (err) => {
   logger.info(`running server on from port:::::::${port}`);
+  getMapsApiUsage();
   if (err) {
     logger.error(`server launch returned error : ${err}`);
   }

@@ -1,14 +1,17 @@
 require('dotenv').config();
 const {hardcodedplaces1} = require('../.dataseed/hardcodedplaces');
-
+const{distance} = require('./geodatasource')
 
 function convertGooglePlaceToYelpPlace(googlePlace) {
-   
+   //console.log(googlePlace)
 
     return {
+      ...googlePlace,  // Spread the remaining attributes into the object
         name: googlePlace.displayName.text,
         location: {
-            display_address: googlePlace.formattedAddress
+            display_address: [googlePlace.formattedAddress],
+            latitude: googlePlace.location.latitude,
+            longitude: googlePlace.location.longitude
         },
         rating: googlePlace.rating,
         review_count: googlePlace.userRatingCount,
@@ -19,8 +22,10 @@ function convertGooglePlaceToYelpPlace(googlePlace) {
             latitude: googlePlace.location.latitude,
             longitude: googlePlace.location.longitude
         },
-        categories: googlePlace.primary_type,
-        ...googlePlace  // Spread the remaining attributes into the object
+        categories: (googlePlace.types || []).map(type => ({
+          title: type
+      }))
+        
     };
 }
 
@@ -53,6 +58,36 @@ function getRandomCoordinates(locationBias) {
     return { latitude: randomLat, longitude: randomLon };
   }
 
+  function getRandomCoordinatesfromRectangle(locationRestriction) {
+    const { low, high } = locationRestriction.rectangle;
+  
+    // Get random latitude and longitude within the bounds
+    const randomLat = low.latitude + (Math.random() * (high.latitude - low.latitude));
+    const randomLon = low.longitude + (Math.random() * (high.longitude - low.longitude));
+  
+    // Calculate center point of rectangle
+    const centerLat = (low.latitude + high.latitude) / 2;
+    const centerLon = (low.longitude + high.longitude) / 2;
+  
+    // Calculate distance from center in meters
+    const distfromcenter = distance(
+      randomLat, 
+      randomLon,
+      centerLat,
+      centerLon,
+      "K"
+    ) * 1000; // Convert km to meters
+  
+    return {
+      randomCoordinates: {
+        latitude: randomLat,
+        longitude: randomLon
+      },
+      distfromcenter
+    };
+  }
+
+
 
 const gsearch = (req,res) =>{
     // Check for required headers
@@ -63,12 +98,14 @@ const gsearch = (req,res) =>{
       return res.status(400).json({ error: 'Missing required headers.' });
   }
  // Check if API key matches the one in .env
- if (!apiKey || apiKey !== process.env.FAKE_API_KEY) {
+ if (!apiKey || apiKey !== process.env.GOOGLE_API_KEY) {
   return res.status(403).json({ error: 'Invalid API key.' });
 }
+console.log('gfaker body')
+console.log(req.body);
   // Validate request body structure
-  let { locationBias, includedTypes, pageToken } = req.body;
-  if (!locationBias || !includedTypes) {
+  let { locationRestriction, textQuery, pageToken } = req.body;
+  if (!locationRestriction || !textQuery) {
       return res.status(400).json({ error: 'Invalid request body.' });
   }
 
@@ -92,7 +129,7 @@ const gsearch = (req,res) =>{
           else
           nextpageToken='';
         
-          console.log(nextpageToken);
+          console.log('next pageToken:' + nextpageToken);
            // Ensure indices is an array
            if (!Array.isArray(indices)) {
                return res.status(400).json({ error: 'pageToken must be a valid JSON array.' });
@@ -101,10 +138,20 @@ const gsearch = (req,res) =>{
            // Filter the hardcoded places based on indices
            responsePlaces = indices.map(index => hardcodedplaces1.places[index]).filter(place => place !== undefined);
            //update locations to random 
-           responsePlaces.map(place=>{
-            const randomCoordinates = getRandomCoordinates(locationBias);
+           responsePlaces =responsePlaces.map(place=>{
+            const {randomCoordinates, distfromcenter}  = getRandomCoordinatesfromRectangle(locationRestriction);
+            // const randomCoordinates  = getRandomCoordinates(locationBias);
+            // const distfromcenter = distance(
+            //   randomCoordinates.latitude,
+            //   randomCoordinates.longitude,
+            //   locationBias.circle.center.latitude,
+            //   locationBias.circle.center.longitude,
+            //   "K"
+            // ) * 1000;
+
             return convertGooglePlaceToYelpPlace({
               ...place,
+              distance: distfromcenter,
               location : {
                 latitude: randomCoordinates.latitude,
                 longitude: randomCoordinates.longitude,
@@ -116,7 +163,7 @@ const gsearch = (req,res) =>{
         console.log(error);
            return res.status(400).json({ error: 'Invalid pageToken format. It must be a valid JSON array.' });
        }
-
+// console.log(responsePlaces)
        // Return the hardcoded places response
        if(nextpageToken!=''){
        return res.json({places:responsePlaces, nextPageToken:nextpageToken});
