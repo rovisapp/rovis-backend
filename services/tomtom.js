@@ -64,7 +64,7 @@ const APIWorker = async (param) => {
   if (param.func == "reversegeocode") {
     retdata = await reversegeocode(param.data.latitude, param.data.longitude);
   } else if (param.func == "searchLocation") {
-    retdata = await searchLocation(param.data.locationQuery);
+    retdata = await searchLocation(param.data.locationQuery, param.data.req, param.data.res);
   } else if (param.func == "routebetweenLocations") {
     retdata = await routebetweenLocations(
       param.data.req,
@@ -515,11 +515,12 @@ const poisearchyelp = async (
 // **************************************************
 // **************************************************
 
-const searchLocation = async (locationQuery) => {
+const searchLocation = async (locationQuery, req, res) => {
   // console.log('searching>> '+locationQuery)
+  const countryCode = req.headers['cf-ipcountry'] || process.env.SEARCHCOUNTRY_DEFAULT ;
   const query = `${TOMTOMAPISEARCHURL}/search/${encodeURIComponent(
     locationQuery
-  )}.json?key=${TOMTOMAPIKEY}&limit=10`;
+  )}.json?key=${TOMTOMAPIKEY}&limit=30`;
   // console.log(query);
   let retdata = [];
   try {
@@ -527,6 +528,24 @@ const searchLocation = async (locationQuery) => {
     // const { data, error } = await queryWorkerQueue.push(query);
     // console.log(data.results);
     retdata = data.results;
+      // Sort results to prioritize matches from the detected country
+      retdata.sort((a, b) => {
+        const aCountryCode = a.address?.countryCode;
+        const bCountryCode = b.address?.countryCode;
+  
+        // If either address is missing countryCode, treat them as lower priority
+        if (!aCountryCode || !bCountryCode) return 1;
+  
+        // If a matches the country code but b doesn't, a should come first
+        if (aCountryCode === countryCode && bCountryCode !== countryCode) return -1;
+        
+        // If b matches the country code but a doesn't, b should come first
+        if (bCountryCode === countryCode && aCountryCode !== countryCode) return 1;
+        
+        // If neither or both match the country code, maintain original order
+        return 0;
+      });
+
   } catch (error) {
     console.log(error.response?.data || error);
     throw new BaseError(

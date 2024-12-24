@@ -49,7 +49,7 @@ app.get("/search", async (req, res, next) => {
   let location=[]
   try {
     // location = await searchLocation(req.query.q);
-    location = await callRateLimitedAPI('searchLocation',{locationQuery:req.query.q, res:res});
+    location = await callRateLimitedAPI('searchLocation',{locationQuery:req.query.q, req:req,res:res});
   } catch (error) {
     next(error);
   }
