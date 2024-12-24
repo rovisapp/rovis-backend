@@ -178,6 +178,7 @@ GOOGLE_JAVASCRIPT_KEY= // google map javascript api key for frontend; required, 
 GPROJECT_ID= // google project id to monitor API usage; not required; Can use a fake number for the app the load.
 PLACES_PROVIDER=YELP // required; can be set to YELP or GOOGLE
 GFAKER=0 // can be set to 0 or 1; required; If set to 1, the server code can feed in dummy places data defined in .dataseed/hardedplaces. js
+SEARCHCOUNTRY_DEFAULT=US // Depends on Cloudfront's cf-ipcountry header to understand request of country a request is coming from. The address autocomplete feature puts addresses of that country on top of prompt list. If the cf-ipcountry header, it defaults to the value assigned here
 ```
 
 

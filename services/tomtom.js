@@ -4,7 +4,20 @@
 // const config = require('config');
 // const ifaces = require('os').networkInterfaces();
 
-//https://gearside.com/easily-link-to-locations-and-directions-using-the-new-google-maps/
+/* 
+TODO Refactoring notes:
+Split this into multiple files since tomtom.js is no longer suitable to hold so much code.
+ratelimiter.js - for callRateLimitedAPI() and dependencies.
+poisearch.js - for poisearch() and dependencies.
+stopfinder.js  - for locateStop,findStopCenter,refineStopCenter,calculateStopsArray
+stoptimes.js - move estimatestarttimesofstopsfromstate(), calculatestopstartendtimes(), yesterdayAtFixedHours,hoursBefore,checkInAt_StayByNight,checkOutAt_StayByNight
+
+Keep:
+reversegeocode()
+searchLocation()
+routebetweenLocations()
+*/
+
 require('dotenv').config();
 const https = require("https");
 const fs = require("fs");
@@ -119,6 +132,12 @@ const callRateLimitedAPI = (worker, data) => {
 
   return prom;
 };
+
+// **************************************************
+// **************************************************
+// ********* END: RATE LIMIT WORKER QUEUE HANDLING
+// **************************************************
+// **************************************************
 
 const reversegeocode = async (latitude, longitude) => {
   // console.log('searching>> '+locationQuery)
@@ -509,11 +528,7 @@ const poisearchyelp = async (
   return retdata;
 };
 
-// **************************************************
-// **************************************************
-// ********* END: RATE LIMIT WORKER QUEUE HANDLING
-// **************************************************
-// **************************************************
+
 
 const searchLocation = async (locationQuery, req, res) => {
   // console.log('searching>> '+locationQuery)
@@ -949,7 +964,7 @@ const checkOutAt_StayByNight = (checkInAt)=>{
 
 
 
-
+// finds start and end times per stop, with cummulative reach times (secs) 
 const calculatestopstartendtimes = (routedefaults, routesummary, stopIntervalsStartEndTimes) =>{
   let actualstartdatetime = new Date(routesummary.departureTime);
   let actualenddatetime = new Date(routesummary.arrivalTime);
@@ -1090,7 +1105,11 @@ const calculatestopstartendtimes = (routedefaults, routesummary, stopIntervalsSt
 
 
 
-
+/*
+Locates stop coordinates on route line
+calculate traveltime to reach that stop, sets stop.cummulativereachtimesinsecs per stop
+finds start and end times per stop
+*/
 const estimatestarttimesofstopsfromstate = (routehash, stops = [], routedefaults, routesummary=null) => {
   // if (stops.length<=0){
   //   return;
