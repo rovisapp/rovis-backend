@@ -231,7 +231,7 @@ app.post("/locatestoparray", bodyParser.json(), async (req, res, next) => {
           result = await callRateLimitedAPI('poisearch',{latitude:eachlocation.latitude,longitude:eachlocation.longitude, radius:parseInt(DEFAULTSEARCHRADIUSINMILES*MILETOMETER), type:eachlocation.type, limit:50, offset:0,locationRestriction:{}, tags:eachlocation.tags, open_at:estlocationarrivaltime});
           
         let poiresultsforthisstop = [];
-         //console.log(result.businesses)
+        //  console.log(result.businesses)
         if (typeof result.businesses!=='undefined'){
           result.businesses.map(poi=>{
             
@@ -252,6 +252,7 @@ app.post("/locatestoparray", bodyParser.json(), async (req, res, next) => {
         if (typeof result.nextPageToken!=='undefined'){
           eachlocation.nextPageToken = result.nextPageToken;
         }
+      
         if (typeof result.locationRestriction!=='undefined'){
           eachlocation.locationRestriction = result.locationRestriction;
         }
@@ -315,6 +316,7 @@ app.post("/poisearch", bodyParser.json(), async (req, res, next) => {
         if (typeof result.nextPageToken!=='undefined'){
           outresults.nextPageToken = result.nextPageToken;
         }
+        
 
         if (typeof result.locationRestriction!=='undefined'){
           outresults.locationRestriction = result.locationRestriction;

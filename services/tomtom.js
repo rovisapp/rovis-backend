@@ -28,6 +28,7 @@ const logger = require("../logger/logger");
 const BaseError = require("../errorHandler/baseError");
 const { distance } = require("./geodatasource");
 const { stopcategories } = require("./yelpcategories");
+const { hereFoodTypes,hereMealCategories,hereRestCategories,hereDayCategories } = require("./herecategories");
 const qrate = require("qrate");
 const apiUsageTracker = require('./apiUsageTracker');
 
@@ -39,6 +40,7 @@ const apiUsageTracker = require('./apiUsageTracker');
 // Access the API keys from environment variables
 const TOMTOMAPIKEY = process.env.TOMTOM_API_KEY;
 const YELPAPIKEY = process.env.YELP_API_KEY;
+const HEREAPIKEY = process.env.HERE_API_KEY;
 
 const PLACESPROVIDER = process.env.PLACES_PROVIDER;
   const DEFAULTSEARCHRADIUSINMILES = 5;
@@ -54,6 +56,7 @@ const TOMTOMREVERSEGEOCODE = "https://api.tomtom.com/search/2/reverseGeocode";
 const YELPBUSINESSSEARCHURL = "https://api.yelp.com/v3/businesses/search";
 const GFAKEPLACESSEARCHURL = `${process.env.APIDOMAIN || 'http://localhost:3070'}/api/user/fake/gsearch`;
 const GOOGLEPLACESSEARCHURL = 'https://places.googleapis.com/v1/places:searchText';
+const HEREBROWSEURL = "https://browse.search.hereapi.com/v1/browse";
 
 // **************************************************
 // **************************************************
@@ -165,6 +168,12 @@ const reversegeocode = async (latitude, longitude) => {
 };
 
 const restaurantcategories = () => {
+  if (process.env.PLACES_PROVIDER=='HERE'){
+    return  [
+      ...hereMealCategories,
+      ...hereFoodTypes];
+     
+  } else
   return [
    ...stopcategories.get("restaurants"),
    ...stopcategories.get("food"),
@@ -174,6 +183,13 @@ const restaurantcategories = () => {
 };
 
 const regularcategories = () => {
+  if (process.env.PLACES_PROVIDER=='HERE'){
+    return [
+        ...hereMealCategories,
+        ...hereRestCategories,
+        ...hereDayCategories
+      ]
+  } else
   return [
     ...stopcategories.get("x-rest"),
     ...stopcategories.get("x-day"),
@@ -265,7 +281,9 @@ const poisearch = async (
   return poisearchyelp(latitude,longitude,radius,type,limit,offset,locationRestriction,tags,open_at);
 else if(PLACESPROVIDER=='GOOGLE'){
  return poisearchg(latitude,longitude,radius,type,limit,offset,locationRestriction,tags,open_at);
-}
+}else if(PLACESPROVIDER=='HERE'){
+  return poisearchh(latitude,longitude,radius,type,limit,offset,locationRestriction,tags,open_at);
+ }
 }
 
 
@@ -287,6 +305,32 @@ const default_gcategories= (type) => {
   return gcategories;
 };
 
+function convertHerePlaceToYelpPlace(herePlace){
+
+  return {
+    ...herePlace,  // Spread the remaining attributes into the object
+      name: herePlace.title,
+      location: {
+          display_address: [`${herePlace.address?.houseNumber||''} ${herePlace.address?.street||''} 
+          ${herePlace.address?.city||''} ${herePlace.address?.state||''} ${herePlace.address?.postalCode||''} ${herePlace.address?.countryName||''}`],
+          latitude: herePlace.position.lat,
+          longitude: herePlace.position.lng
+      },
+      rating: '',
+      review_count: '',
+      url: herePlace.contacts?.[0]?.www?.[0]?.value || '',
+      distance: herePlace.distance,
+      price: '',
+      coordinates: {
+          latitude: herePlace.position.lat,
+          longitude: herePlace.position.lng
+      },
+      categories: (herePlace.categories || []).map(cat => ({
+        title: cat.name
+    }))
+      
+  };
+}
 
 function convertGooglePlaceToYelpPlace(googlePlace) {
   //console.log(googlePlace)
@@ -462,6 +506,191 @@ const poisearchg = async (
   }
 };
 
+
+const default_herecategories = (type) => {
+  let herecategories = "";
+  if (type.includes("meal")) {
+    // herecategories += "100";
+    herecategories += hereMealCategories.map(category => category.CategoryId).join(',');
+  }
+  if (type.includes("rest")) {
+    herecategories = herecategories == "" ? "" : `${herecategories},`;
+    // herecategories += 
+    //   "400-4300,"+ // Rest - Area
+    //   "550,"+ // Leisure and Outdoor
+    //   "800-8500,"+ // Parking
+    //   "800-8300,"+ // Library
+    //   "700-7600,"+ // Fueling Station
+    //   "600-6000,"+ // Convenience Store
+    //   "600-6100,"+ // Mall-Shopping Complex
+    //   "600-6200,"+ // Department Store
+    //   "600-6300-0066,"+ // Grocery
+    //   "600-6400,"+ // Drugstore or Pharmacy
+    //   "600-6600,"+ // Hardware, House and Garden
+    //   "600-6900-0247,"+ // Market
+    //   "700-7460,"+ //Tourist Information
+    //   "700-7850,"+ //Car Repair-Service
+    //   "700-7900,"+ //Truck-Semi Dealer-Services
+    //   "900-9200"; //Outdoor Area-Complex
+    herecategories += hereRestCategories.map(category => category.CategoryId).join(',');
+
+  }
+  if (type.includes("day")) {
+    herecategories = herecategories == "" ? "" : `${herecategories},`;
+    // herecategories =
+    //  "550"; // Accommodations
+    herecategories += hereDayCategories.map(category => category.CategoryId).join(',');
+  }
+  return herecategories;
+};
+
+
+const resolveToHereCatIds = (tags, allHereCategoryArray, hereFoodTypeArray)=>{
+   console.log('inside resolveToHereCatIds')
+  const ret = {
+    categoryIds: [],
+    foodTypeIds:[]
+
+  };
+  // console.log(ret)
+  hereFoodTypeArray.map(foodType =>{
+    if(tags.includes(foodType.FoodType)){ // search for foodtype in tags[]
+      ret.foodTypeIds.push(foodType.FoodtypeID);
+      //tags.splice(array.indexOf(foodType.FoodType), 1); // remove what was found, from tags[], so that it is no searched again.
+    }
+  });
+  //console.log(tags)
+  
+    allHereCategoryArray.map(category => {
+      if(tags.includes(category.CategoryType)){
+        ret.categoryIds.push(category.CategoryId);
+        
+      }
+    
+  }
+  );
+  
+  
+console.log(ret)
+  return ret;
+  // return 
+}
+
+
+const poisearchh = async (
+  latitude,
+  longitude,
+  radius = (DEFAULTSEARCHRADIUSINMILES * MILETOMETER).toFixed(0),
+  type,
+  limit = 20,
+  offset = 0,
+  locationRestriction={},
+  tags = [],
+  open_at =0
+) => {
+  if(type=='userdefined'){
+    return {businesses:[]};
+  }
+  if (limit > 20) {
+    console.log("Forcing search limit to 20 results");
+    limit = 20;
+  }
+  if (radius > 40000) {
+    // limit this to 4000 meters
+    console.log(`Search requested withing ${radius} meters`);
+    console.log("Forcing search to 40000 meters");
+    radius = 40000;
+  }
+
+  let herecategories = default_herecategories(type); // determine default here categories from type (meal, rest or day)
+  // If extra search tags were passed, find whethere the tag(s) corresponds to a category and/or foodtype
+  let herefoodtypes='';
+  
+  console.log(tags);
+  if (tags.length > 0) {
+    let ret = resolveToHereCatIds(tags, 
+      [...hereRestCategories, ...hereDayCategories, ...hereMealCategories], 
+      hereFoodTypes);
+      herecategories = ret.categoryIds.length>0?ret.categoryIds.join(','):'';
+    herefoodtypes = ret.foodTypeIds.length>0?ret.foodTypeIds.join(','):'';
+    
+  }
+
+
+
+
+  let query = `${HEREBROWSEURL}?at=${latitude},${longitude}&in=circle:${latitude},${longitude};r=${radius}&limit=${limit}&offset=${offset}&apiKey=${HEREAPIKEY}`
+  let foodtypequery = query;
+  let categoryquery = query;
+  if (herefoodtypes!=''){
+    foodtypequery +=`&foodTypes=${herefoodtypes}`;
+   }
+  if (herecategories!=''){ // only use categoryIds if foodtype is absent
+    categoryquery +=`&categories=${herecategories}`;
+ }
+ 
+  // if (open_at!=0){
+  //    query +=`&open_at=${open_at}`;
+  // }
+  console.log(foodtypequery);
+  console.log(categoryquery);
+  
+  try {
+    // const { data, error } = await queryWorkerQueue.push(query);
+    let dataitems = [];
+    let erroritems = [];
+    // perform 1st API call with &foodTypes=xx param
+    if(herefoodtypes!=''){
+      const { data, error } = await axios.get(foodtypequery, {
+        headers: {Accept: "application/json"},
+      });
+      dataitems = [...data.items];
+      erroritems.push(error);
+    }
+    // perform 2nd API call with &categories=xx param
+    if (herecategories!=''){
+      const { data, error } = await axios.get(categoryquery, {
+        headers: {Accept: "application/json"},
+      });
+      
+      dataitems = [...dataitems, ...data.items];
+      erroritems.push(error);
+    }
+   
+
+
+      // console.log(dataitems);
+    
+    // Modify place attributes + Add distance attribute to each place
+    if (typeof dataitems!=='undefined' && dataitems.length >0){
+      dataitems = dataitems.map(place => {
+        return convertHerePlaceToYelpPlace(place)
+      });
+
+       
+      
+     }
+
+     return {
+      businesses: dataitems||[],
+      total: dataitems?.length||0,
+      
+  };
+
+  } catch (error) {
+    console.log(erroritems);
+    throw new BaseError(
+      "Failed to perform poisearch",
+      true,
+      erroritems,
+      `Failed to perform poisearch ${JSON.stringify(
+        erroritems
+      )}`
+    );
+  }
+  
+  
+};
 
 const poisearchyelp = async (
   latitude,
@@ -863,7 +1092,7 @@ const routebetweenLocations = async (
         : await axios.get(query);
     // const { data, error } = await queryWorkerQueue.push(query);
    
-    console.log(data.routes[0].summary);
+    // console.log(data.routes[0].summary);
     // Output:
     // {
     //     lengthInMeters: 450425,
