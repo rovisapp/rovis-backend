@@ -23,8 +23,8 @@ const { spawn } = require('child_process');
 const readline = require('readline');
 //const { Pool } = require('pg');
 const pool = require('../../db/config');
-const BATCH_SIZE = 10000; // Process 10k records at a time
-const CHUNK_SIZE = 5000;
+const BATCH_SIZE = process.env.WEATHER_BATCH_SIZE; // Process 10k records at a time
+const CHUNK_SIZE = process.env.WEATHER_CHUNK_SIZE; // Process per chunk
 let NUM_OF_PARAMS;
 
 // Each boundary is defined by min/max lat/lon

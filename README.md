@@ -262,18 +262,62 @@ Use .gitignore while commiting code.
 Do not commit any code secrets.
 Do not commit to main branch.
 
-### Install docker
+### Install docker 
+(Needed for Weather downloader)
 [Install docker desktop](https://docs.docker.com/desktop/)
+
+
+### To intall wgrib2
+(Needed for Weather downloader)
+
+To install wgrib2 in mac
+```
+# download macport 
+https://www.macports.org/install.php
+# Then install wgrib2 with macport
+sudo port install wgrib2
+# it installs in /opt/local/bin/wgrib2
+```
+To install wgrib2 in digitalocean linux
+```
+sudo apt-get install -y build-essential libaec-dev zlib1g-dev libcurl4-openssl-dev libboost-dev curl wget zip unzip bzip2 gfortran gcc g++
+mkdir -p ~/Downloads/wgrib2
+cd ~/Downloads/wgrib2
+wget -c https://ftp.cpc.ncep.noaa.gov/wd51we/wgrib2/wgrib2.tgz
+tar -xzvf wgrib2.tgz
+cd grib2
+apt-get install cmake
+export CC=gcc
+export FC=gfortran
+make
+# Test succesfull compilation by
+wgrib2/wgrib2 -config
+#move wgrib2/wgrib2 to /opt/local/bin for the nodejs code to use
+mkdir -p /opt/local/bin
+cp -rfv wgrib2/wgrib2 /opt/local/bin/wgrib2
+rm -rfv ~/Downloads/wgrib2
+# Run wgrib2 
+/opt/local/bin/wgrib2 <grib2 file>
+```
+
+
 
 ### To start the app
 
 ```
-
 npm install
-# To clean run (remove and recrreate docker+postgres)
-npm run start:clean
-# To run app by persisting postgres
-npm run start:dev
+
+# See scriptsComments under package.json for more instructions on how to run the app in DEV and PROD orgs
+# Runs main app
+npm run start
+
+
+# Runs the weather downloader - persist postgres + No docker rebuild
+npm run start:grib
+# Runs the weather downloader - Will docker rebuild + clean reinstall postgres
+npm run start:grib:clean
 ```
+
+
 
 
