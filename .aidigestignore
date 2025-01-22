@@ -139,3 +139,6 @@ codebase.md
 .dataseed/
 package.json
 yelpcategories.js
+services/weather/temp/
+docker/postgres/backup/
+docker/postgres/data/

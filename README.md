@@ -262,9 +262,17 @@ Use .gitignore while commiting code.
 Do not commit any code secrets.
 Do not commit to main branch.
 
+### Install docker
+[Install docker desktop](https://docs.docker.com/desktop/)
+
 ### To start the app
+
 ```
+
 npm install
+# To clean run (remove and recrreate docker+postgres)
+npm run start:clean
+# To run app by persisting postgres
 npm run start:dev
 ```
 

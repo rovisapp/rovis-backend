@@ -2,7 +2,7 @@ const logger = require('../logger/logger');
 const BaseError = require('./baseError');
 
 function logError(err) {
-  // console.error(err);
+  console.error(err);
   logger.error(err);
 }
 

@@ -1,12 +1,46 @@
 {
-  "name": "listmaker-backend",
+  "name": "rovis-backend",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "start:dev": "nodemon index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+
+    
+    "start": "nodemon index.js",
+    "start:prod": "node index.js",
+
+    
+    "docker:up": "docker-compose -f docker/docker-compose.yml up -d",
+    "docker:down": "docker-compose -f docker/docker-compose.yml down",
+    "docker:down:clean": "docker-compose -f docker/docker-compose.yml down -v",
+    "docker:recreatepostgresfolders": "rm -r docker/postgres/data && rm -r docker/postgres/backup && mkdir docker/postgres/data && mkdir docker/postgres/backup",
+    "docker:clean": "npm run docker:recreatepostgresfolders && rm -rf docker/postgres/data/* docker/postgres/backup/* docker/postgres/pgadmin/*",
+    "docker:build": "docker-compose -f docker/docker-compose.yml build --no-cache",
+
+    
+    "prestart:grib": "npm run docker:up",
+    "start:grib": "nodemon services/weather/gribdownloader.js",
+    "poststart:grib": "npm run docker:down",
+    "start:grib:clean": "npm run docker:down:clean && npm run docker:clean && npm run docker:build && npm run docker:up && npm run start:grib",
+
+    
+    "prestart:prod:grib": "npm run docker:up",
+    "start:prod:grib": "node services/weather/gribdownloader.js",
+    "poststart:prod:grib": "npm run docker:down",
+    "start:prod:grib:clean": "npm run docker:down:clean && npm run docker:clean && npm run docker:build && npm run docker:up && npm run start:prod:grib"
+
+  },
+  "scriptsComments": {
+    "help1":"Only use the following npm scripts to run",
+    "help2": "General way to run an npm script using pm2 is : pm2 start npm --name {my-app-name} -- run {npm:script} see https://stackoverflow.com/a/60596889",
+
+    "start": "Use this for DEV in local machine. Runs the regular app.",
+    "start:grib": "Use this for DEV in local machine. Runs the weather downloader.",
+    "start:grib:clean": "Use this for DEV in local machine. Purges Postgresql+ Rebuilds Docker container, then launches the weather downloader.",
+
+    "start:prod": "Use this for PROD. Runs the regular app. Its better to use pm2, eg, pm2 start npm --name \"rovis-backend\" -- run \"start:prod\"",
+    "start:prod:grib": "Use this for PROD.Runs the weather downloader. Its better to use pm2, eg, pm2 start npm --name \"rovis-weather-batch\" -- run \"start:prod:grib\"",
+    "start:prod:grib:clean": "Use this for prod, Purges Postgresql+ Rebuilds Docker container, then launches the weather downloader. Its better to use pm2,eg, pm2 start npm --name \"rovis-weather-batch\" -- run \"start:prod:grib:clean\" "
   },
   "author": "",
   "license": "ISC",
@@ -18,10 +52,13 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "eff-diceware-passphrase": "^3.0.0",
-    "express": "^4.18.2",
+    "express": "^4.21.2",
     "forever": "^4.0.1",
     "googleapis": "^144.0.0",
     "jsonwebtoken": "^9.0.0",
+    "moment": "^2.30.1",
+    "node-schedule": "^2.1.1",
+    "pg": "^8.13.1",
     "qrate": "^1.2.1",
     "stub-service": "^1.0.1",
     "winston": "^3.3.3"

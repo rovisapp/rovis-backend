@@ -7,6 +7,8 @@ require('dotenv').config();
 const bodyParser = require('body-parser');
 const {searchLocation, routebetweenLocations, locateStop, calculateStopsArray, reversegeocode, callRateLimitedAPI, restaurantcategories, regularcategories,default_yelpcategories,yelpcategories_alias_to_title,estimatestarttimesofstopsfromstate} =  require("../services/tomtom");
 const {gsearch} = require('../services/gfaker');
+// const GribDownloader = require('../services/weather/gribdownloader')
+const weatherresult = require('../services/weather/weathermain');
 const { logErrorMiddleware, returnError } = require('../errorHandler/errorHandler');
 const api400Error = require('../errorHandler/api400Error');
 const api500Error = require('../errorHandler/api500Error');
@@ -19,7 +21,17 @@ const app = express();
 app.use(express.json());
 //
 
+//http://localhost:3070/api/user/weather
+app.get('/weather', (req, res) => {
+  res.json( {weatherresult} );
+});
 
+//http://localhost:3070/api/user/gribdownload
+// app.get('/gribdownload', (req, res) => {
+//   const submitted = new GribDownloader().downloadBatch();
+//   // This response is sent immediately, while downloads happen in background
+//   res.json({ message: 'Download submitted successfully' });
+// });
 
 app.post('/fake/gsearch', (req, res) => {
   try {

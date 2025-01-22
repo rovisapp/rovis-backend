@@ -137,3 +137,8 @@ dist
 .DS_Store
 
 *-codebase.md
+
+services/weather/temp/
+
+docker/postgres/data/
+docker/postgres/backup/
