@@ -341,6 +341,52 @@ class GribDownloader {
         }
     }
 
+    async processWgribOutputLineEmitter(file, args) {
+        if (!file || !Array.isArray(args)) {
+            throw new Error('Invalid parameters for wgrib2 process');
+        }
+
+        if (!fs.existsSync(file)) {
+            throw new Error(`File not found: ${file}`);
+        }
+
+        const { EventEmitter } = require('events');
+        const lineEmitter = new EventEmitter();
+    
+        const fullArgs = [file, ...args.map(String)];
+        console.log('Running wgrib2 with args:', fullArgs);
+        const wgrib = spawn('/opt/local/bin/wgrib2', fullArgs);
+        this.activeProcesses.add(wgrib);
+    
+        const rl = readline.createInterface({
+            input: wgrib.stdout,
+            crlfDelay: Infinity
+        });
+        lineEmitter.pause = () => rl.pause();
+        lineEmitter.resume = () => rl.resume();
+        rl.on('line', (line) => {
+            lineEmitter.emit('line', line);
+        });
+    
+        wgrib.on('error', (err) => {
+            this.activeProcesses.delete(wgrib);
+            rl.close();
+            lineEmitter.emit('error', err);
+        });
+    
+        wgrib.on('close', (code) => {
+            this.activeProcesses.delete(wgrib);
+            rl.close();
+            if (code === 0) {
+                lineEmitter.emit('end');
+            } else {
+                lineEmitter.emit('error', new Error(`wgrib2 process exited with code ${code}`));
+            }
+        });
+    
+        return lineEmitter;
+    }
+
     async processWgribOutput(file, args) {
         if (!file || !Array.isArray(args)) {
             throw new Error('Invalid parameters for wgrib2 process');
@@ -402,26 +448,56 @@ class GribDownloader {
     async processLandPoints(file) {
         try {
             const args = ['-match', ':LAND:', '-csv', '-'];
-            const lines = await this.processWgribOutput(file, args);
-            
-            for (const line of lines) {
-                const parts = line.split(',');
-                if (parts.length >= 7 && parts[6].trim() === '1') {
-                    const lat = parseFloat(parts[4]).toFixed(2);
-                    const lon = parseFloat(parts[5]).toFixed(2);
-                    // Skip points in exclusion zones
-                    if (isPointInExclusionZone(parseFloat(lat), parseFloat(lon))) {
-                        continue;
+            const lineEmitter = await this.processWgribOutputLineEmitter(file, args);
+    
+            return new Promise((resolve, reject) => {
+                lineEmitter.on('line', (line) => {
+                    const parts = line.split(',');
+                    if (parts.length >= 7 && parts[6].trim() === '1') {
+                        const lat = parseFloat(parts[4]).toFixed(2);
+                        const lon = parseFloat(parts[5]).toFixed(2);
+                        if (!isPointInExclusionZone(parseFloat(lat), parseFloat(lon))) {
+                            this.landPoints.add(`${lat},${lon}`);
+                        }
                     }
-                    this.landPoints.add(`${lat},${lon}`);
-                }
-            }
-            this.totalRowsInFile = this.landPoints.size*NUM_OF_PARAMS;
+                });
+    
+                lineEmitter.on('end', () => {
+                    this.totalRowsInFile = this.landPoints.size * NUM_OF_PARAMS;
+                    resolve();
+                });
+    
+                lineEmitter.on('error', reject);
+            });
         } catch (error) {
-            console.error('Error processing land points:', error);
             throw error;
         }
     }
+
+
+    // async processLandPoints(file) {
+    //     try {
+    //         const args = ['-match', ':LAND:', '-csv', '-'];
+    //         const lines = await this.processWgribOutput(file, args);
+            
+    //         for (const line of lines) {
+    //             const parts = line.split(',');
+    //             if (parts.length >= 7 && parts[6].trim() === '1') {
+    //                 const lat = parseFloat(parts[4]).toFixed(2);
+    //                 const lon = parseFloat(parts[5]).toFixed(2);
+    //                 // Skip points in exclusion zones
+    //                 if (isPointInExclusionZone(parseFloat(lat), parseFloat(lon))) {
+    //                     continue;
+    //                 }
+    //                 this.landPoints.add(`${lat},${lon}`);
+    //             }
+    //         }
+    //         this.totalRowsInFile = this.landPoints.size*NUM_OF_PARAMS;
+    //     } catch (error) {
+    //         console.error('Error processing land points:', error);
+    //         throw error;
+    //     }
+    // }
 
     async initBatch() {
         try {
@@ -462,130 +538,158 @@ class GribDownloader {
         }
     }
 
-    // async saveToDatabase(geom, parameter, value, forecastHour) {
-    //     const values = {};
-    //     values[forecastHour] = value;
+    async processNonLandData(file) {
+        const forecastHourMatch = file.match(/f(\d{3})/);
+        if (!forecastHourMatch) throw new Error('Could not extract forecast hour');
+     
+        const forecastHour = parseInt(forecastHourMatch[1]);
+        const matchPattern = Array.from(this.parameters.varsandlevels_nonLand.entries())
+            .map(([param, level]) => `${param}:${level}`)
+            .join('|');
+     
+        const args = ['-not', 'LAND', '-match', `(${matchPattern})`, '-csv', '-'];
+        const lineEmitter = await this.processWgribOutputLineEmitter(file, args);
+     
+        let currentBatch = [];
+        let processing = false;
+        let batchPromise = Promise.resolve();
+     
+        return new Promise((resolve, reject) => {
+            lineEmitter.on('line', async (line) => {
+                if (processing) {
+                    lineEmitter.pause();
+                    return;
+                }
+                processing = true;
+     
+                try {
+                    const parts = line.split(',');
+                    if (parts.length < 7) return;
+     
+                    const lat = parseFloat(parts[4]).toFixed(2);
+                    const lon = parseFloat(parts[5]).toFixed(2);
+                    const coordKey = `${lat},${lon}`;
+     
+                    if (!this.landPoints.has(coordKey)) return;
+     
+                    const parameter = parts[2].replace(/"/g, '');
+                    const parameterlevel = parts[3].replace(/"/g, '');
+                    
+                    if (!this.parameters.varsandlevels_nonLand.has(parameter) || 
+                        this.parameters.varsandlevels_nonLand.get(parameter) !== parameterlevel) return;
+                    
+                    const value = parseFloat(parts[6].trim());
+                    if (isNaN(value)) return;
+     
+                    currentBatch.push({
+                        geom: coordKey,
+                        parameter,
+                        value,
+                        forecastHour
+                    });
+     
+                    // console.log(currentBatch[currentBatch.length-1]);
+                    
+                    if (currentBatch.length >= BATCH_SIZE) {
+                        //console.log('calling bulkSaveToDatabase');
+                        const batchToSave = [...currentBatch];
+                        batchPromise = batchPromise.then(() => this.bulkSaveToDatabase(batchToSave));
+                        currentBatch = [];
+                    }
+                } finally {
+                    processing = false;
+                    lineEmitter.resume();
+                }
+            });
+     
+            lineEmitter.on('end', () => {
+                if (currentBatch.length > 0) {
+                    batchPromise = batchPromise
+                    .then(() => this.bulkSaveToDatabase(currentBatch))
+                    .then(resolve)
+                    .catch(reject);
+                } else {
+                    batchPromise.then(resolve).catch(reject);
+                }
+            });
+     
+            lineEmitter.on('error', reject);
+        });
+     }
 
-    //     const query = `
-    //         INSERT INTO forecasts (geom, parameter, values)
-    //         VALUES (ST_SetSRID(ST_MakePoint($1, $2), 4326), $3, $4::jsonb)
-    //         ON CONFLICT (geom, parameter) 
-    //         DO UPDATE SET values = forecasts.values || $4::jsonb;
-    //     `;
-
-    //     const [lon, lat] = geom.split(',').map(Number);
-    //     try {
-    //         await this.pool.query(query, [lon, lat, parameter, JSON.stringify(values)]);
-    //     } catch (error) {
-    //         console.error('Error saving to database:', error);
-    //         throw error;
-    //     }
-    // }
 
     // async processNonLandData(file) {
+        
     //     const forecastHourMatch = file.match(/f(\d{3})/);
     //     if (!forecastHourMatch) {
     //         throw new Error('Could not extract forecast hour from filename');
     //     }
-
+    
     //     try {
     //         const forecastHour = parseInt(forecastHourMatch[1]);
-    //         const args = ['-not', 'LAND', '-csv', '-'];
-    //         const lines = await this.processWgribOutput(file, args);
+    //         // Create match pattern from varsandlevels_nonLand
+    //     const matchPattern = Array.from(this.parameters.varsandlevels_nonLand.entries())
+    //     .map(([param, level]) => `${param}:${level}`)
+    //     .join('|');
 
+    //         // const args = ['-not', 'LAND', '-csv', '-'];
+    //         // filter only params that are needed  
+    //         // wgrib2 gfs.t18z.pgrb2.0p25.f003.grib2 -not LAND -match "(PRATE:surface|TMP:2 m above ground)" -csv -
+    //         const args = ['-not', 'LAND', '-match', `(${matchPattern})`, '-csv', '-']; 
+
+    //         const lines = await this.processWgribOutput(file, args);
+    
+    //         // Process lines in chunks
+    //         let currentBatch = [];
+              
+            
     //         for (const line of lines) {
     //             const parts = line.split(',');
     //             if (parts.length >= 7) {
     //                 const lat = parseFloat(parts[4]).toFixed(2);
     //                 const lon = parseFloat(parts[5]).toFixed(2);
     //                 const coordKey = `${lat},${lon}`;
-                    
+    
     //                 if (this.landPoints.has(coordKey)) {
     //                     const parameter = parts[2].replace(/"/g, '');
+    //                     const parameterlevel= parts[3].replace(/"/g, '');
+    //                     if (!(this.parameters.varsandlevels_nonLand.has(parameter)&& 
+    //                     this.parameters.varsandlevels_nonLand.get(parameter) == parameterlevel
+    //                     ))
+    //                     {
+    //                         continue;
+    //                     } 
     //                     const value = parseFloat(parts[6].trim());
+    
     //                     if (!isNaN(value)) {
-    //                         await this.saveToDatabase(coordKey, parameter, value, forecastHour);
+    //                         currentBatch.push({
+    //                             geom: coordKey,
+    //                             parameter,
+    //                             value,
+    //                             forecastHour
+    //                         });
+    
+    //                         // When batch size is reached, process it
+    //                         if (currentBatch.length >= BATCH_SIZE) {
+    //                             await this.bulkSaveToDatabase(currentBatch);
+                                
+    //                             currentBatch = []; // Clear the batch
+    //                         }
     //                     }
     //                 }
     //             }
     //         }
+    
+    //         // Process any remaining records
+    //         if (currentBatch.length > 0) {
+    //             await this.bulkSaveToDatabase(currentBatch);
+    //         }
+    
     //     } catch (error) {
     //         console.error('Error processing non-land data:', error);
     //         throw error;
     //     }
     // }
-    async processNonLandData(file) {
-        
-        const forecastHourMatch = file.match(/f(\d{3})/);
-        if (!forecastHourMatch) {
-            throw new Error('Could not extract forecast hour from filename');
-        }
-    
-        try {
-            const forecastHour = parseInt(forecastHourMatch[1]);
-            // Create match pattern from varsandlevels_nonLand
-        const matchPattern = Array.from(this.parameters.varsandlevels_nonLand.entries())
-        .map(([param, level]) => `${param}:${level}`)
-        .join('|');
-
-            // const args = ['-not', 'LAND', '-csv', '-'];
-            // filter only params that are needed  
-            // wgrib2 gfs.t18z.pgrb2.0p25.f003.grib2 -not LAND -match "(PRATE:surface|TMP:2 m above ground)" -csv -
-            const args = ['-not', 'LAND', '-match', `(${matchPattern})`, '-csv', '-']; 
-
-            const lines = await this.processWgribOutput(file, args);
-    
-            // Process lines in chunks
-            let currentBatch = [];
-              
-            
-            for (const line of lines) {
-                const parts = line.split(',');
-                if (parts.length >= 7) {
-                    const lat = parseFloat(parts[4]).toFixed(2);
-                    const lon = parseFloat(parts[5]).toFixed(2);
-                    const coordKey = `${lat},${lon}`;
-    
-                    if (this.landPoints.has(coordKey)) {
-                        const parameter = parts[2].replace(/"/g, '');
-                        const parameterlevel= parts[3].replace(/"/g, '');
-                        if (!(this.parameters.varsandlevels_nonLand.has(parameter)&& 
-                        this.parameters.varsandlevels_nonLand.get(parameter) == parameterlevel
-                        ))
-                        {
-                            continue;
-                        } 
-                        const value = parseFloat(parts[6].trim());
-    
-                        if (!isNaN(value)) {
-                            currentBatch.push({
-                                geom: coordKey,
-                                parameter,
-                                value,
-                                forecastHour
-                            });
-    
-                            // When batch size is reached, process it
-                            if (currentBatch.length >= BATCH_SIZE) {
-                                await this.bulkSaveToDatabase(currentBatch);
-                                
-                                currentBatch = []; // Clear the batch
-                            }
-                        }
-                    }
-                }
-            }
-    
-            // Process any remaining records
-            if (currentBatch.length > 0) {
-                await this.bulkSaveToDatabase(currentBatch);
-            }
-    
-        } catch (error) {
-            console.error('Error processing non-land data:', error);
-            throw error;
-        }
-    }
 
 
     async bulkSaveToDatabase(bulkData) {
@@ -717,12 +821,13 @@ class GribDownloader {
                         console.log(`Skipping ${filename} - not available`);
                     }
                 } catch (error) {
-                    console.error(`Error processing ${filename}:`, error);
+                    console.error(`\nError processing ${filename}:`, error);
                     if (this.shouldExit) {
                         break;
                     }
                     // Continue with next file even if current fails
-                    continue;
+                    // continue;
+                    break; // no- break if any file fails
                 }
             }
 
