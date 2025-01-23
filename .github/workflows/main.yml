@@ -18,5 +18,5 @@ jobs:
         run: |
           echo "$SSH_PRIVATE_KEY" > id_rsa
           chmod 600 id_rsa
-          ssh -i id_rsa -o StrictHostKeyChecking=no root@$DROPLET_IP "cd /var/www/rovis/backend/ && git fetch origin && git checkout main && git pull origin main && pm2 restart rovis-backend"
+          ssh -i id_rsa -o StrictHostKeyChecking=no root@$DROPLET_IP "cd /var/www/rovis/backend/ && git fetch origin && git checkout main && git pull origin main && pm2 restart all"
           rm id_rsa
