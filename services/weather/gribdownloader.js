@@ -776,8 +776,7 @@ class GribDownloader {
     }
 
     generateFileNumbers() {
-        //return Array.from({ length: 129 }, (_, i) => i * 3)
-        return Array.from({ length: 6 }, (_, i) => i * 3)
+        return Array.from({ length: process.env.WEATHER_NUMOFFORECASTS }, (_, i) => i * 3)
             .map(num => `f${num.toString().padStart(3, '0')}`);
     }
 
