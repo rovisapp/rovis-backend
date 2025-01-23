@@ -267,7 +267,7 @@ Do not commit to main branch.
 [Install docker desktop](https://docs.docker.com/desktop/)
 
 
-### To intall wgrib2
+### Install wgrib2
 (Needed for Weather downloader)
 
 To install wgrib2 in mac
@@ -311,7 +311,7 @@ npm install
 # Runs main app
 npm run start
 
-
+To run the weather downloader, you need docker, postgres and wgrib2
 # Runs the weather downloader - persist postgres + No docker rebuild
 npm run start:grib
 # Runs the weather downloader - Will docker rebuild + clean reinstall postgres
