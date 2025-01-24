@@ -767,8 +767,8 @@ class GribDownloader {
             await this.processLandPoints(filePath);
             await this.processNonLandData(filePath);
             
-            // fs.unlinkSync(filePath);
-            // console.log(`Deleted processed file: ${filename}`);
+             fs.unlinkSync(filePath);
+             console.log(`Deleted processed file: ${filename}`);
         } catch (error) {
             console.error(`Error processing file ${filename}:`, error);
             throw error;
@@ -841,9 +841,9 @@ class GribDownloader {
             try {
                 // Cleanup any remaining files in download directory
                 const files = fs.readdirSync(this.downloadDir);
-                // for (const file of files) {
-                //     fs.unlinkSync(path.join(this.downloadDir, file));
-                // }
+                for (const file of files) {
+                    fs.unlinkSync(path.join(this.downloadDir, file));
+                }
             } catch (error) {
                 console.error('Error cleaning up download directory:', error);
             }
