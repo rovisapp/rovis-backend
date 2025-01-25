@@ -5,8 +5,11 @@
   "main": "index.js",
   "scripts": {
 
-    
+    "prestart": "npm run docker:up",
     "start": "nodemon index.js",
+    "poststart": "npm run docker:down",
+    "start:clean":"npm run docker:down:clean && npm run docker:build && npm run docker:up",
+
     "start:prod": "node index.js",
 
     
@@ -34,8 +37,9 @@
     "help1":"Only use the following npm scripts to run",
     "help2": "General way to run an npm script using pm2 is : pm2 start npm --name {my-app-name} -- run {npm:script} see https://stackoverflow.com/a/60596889",
 
-    "start": "Use this for DEV in local machine. Runs the regular app.",
-    "start:grib": "Use this for DEV in local machine. Runs the weather downloader.",
+    "start": "Use this for DEV in local machine. Runs the regular app with docker+postgres in the background",
+    "start:clean": "Use this for DEV in local machine. Rebuilds docker, the runs the regular app with docker, doesnt clean postgres.",
+    "start:grib": "Use this for DEV in local machine. Runs the weather downloader with docker+postgres in the background",
     "start:grib:clean": "Use this for DEV in local machine. Purges Postgresql+ Rebuilds Docker container, then launches the weather downloader.",
 
     "start:prod": "Use this for PROD. Runs the regular app. Its better to use pm2, eg, pm2 start npm --name \"rovis-backend\" -- run \"start:prod\"",
