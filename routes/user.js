@@ -8,6 +8,7 @@ const bodyParser = require('body-parser');
 const {searchLocation, routebetweenLocations, locateStop, calculateStopsArray, reversegeocode, callRateLimitedAPI, restaurantcategories, regularcategories,default_yelpcategories,yelpcategories_alias_to_title,estimatestarttimesofstopsfromstate} =  require("../services/tomtom");
 const {gsearch} = require('../services/gfaker');
 // const GribDownloader = require('../services/weather/gribdownloader')
+const pool = require('../db/config');
 const weatherresult = require('../services/weather/weathermain');
 const { logErrorMiddleware, returnError } = require('../errorHandler/errorHandler');
 const api400Error = require('../errorHandler/api400Error');
@@ -21,9 +22,33 @@ const app = express();
 app.use(express.json());
 //
 
+
+
 //http://localhost:3070/api/user/weather
-app.get('/weather', (req, res) => {
-  res.json( {weatherresult} );
+app.get('/weather', async (req, res) => {
+  // res.json( {weatherresult} );
+  const { low_lat, low_lon, high_lat, high_lon } = req.query;
+  
+  try {
+    const query = `
+      SELECT * FROM forecasts 
+      WHERE ST_Contains(
+        ST_MakeEnvelope($1, $2, $3, $4, 4326),
+        geom
+      )`;
+    
+    const result = await pool.query(query, [
+      low_lon, low_lat, 
+      high_lon, high_lat
+    ]);
+    
+
+    res.json(result.rows);
+  
+  } catch (error) {
+    console.error('Error fetching weather data:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 //http://localhost:3070/api/user/gribdownload

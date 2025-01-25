@@ -19,6 +19,17 @@ pool.on('error', (err) => {
   logger.error('Unexpected error on idle client', err);
 });
 
+pool.cleanDatabasePool = async function() {
+  try {
+    console.log('Closing database pool...');
+    await this.end();
+    console.log('Database pool successfully closed');
+  } catch (dbError) {
+    console.error('Error while closing database pool:', dbError);
+  }
+};
+
+
 // Make pool available globally
 // global.pg_pool = pool;
 

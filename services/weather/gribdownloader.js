@@ -84,7 +84,7 @@ function showProgressBar(completed, total, message) {
     const percentage = Math.round(progress * 100);
 
     // Print the progress bar and percentage, overwriting the same line
-    process.stdout.write(`\r${bar} ${percentage}% ${message}`);
+    // process.stdout.write(`\r${bar} ${percentage}% ${message}`);
 }
 
 class GribDownloader {
@@ -851,6 +851,12 @@ class GribDownloader {
     }
 
     scheduleDaily() {
+        // Flag to track if a download is currently in progress
+    // Capture the current instance
+    const self = this;
+    // Flag to track if a download is currently in progress
+    self._isDownloadRunning = false;
+
         const rules = [
             { hour: 4, minute: 15 },  // For 00Z run
             // { hour: 10, minute: 15 }, // For 06Z run
@@ -860,11 +866,17 @@ class GribDownloader {
 
         rules.forEach(rule => {
             schedule.scheduleJob({ hour: rule.hour, minute: rule.minute, tz: 'UTC' }, async () => {
+                if (self._isDownloadRunning) {return;}
                 console.log(`Starting scheduled download at ${rule.hour}:${rule.minute} UTC`);
                 try {
+                    // Set flag to indicate download is starting
+                    self._isDownloadRunning = true;
                     await this.downloadBatch();
                 } catch (error) {
                     console.error('Scheduled download failed:', error);
+                }finally {
+                    // Reset flag when download completes or fails
+                    self._isDownloadRunning = false;
                 }
             });
         });
