@@ -23,7 +23,7 @@ const { spawn } = require('child_process');
 const pool = require('../../db/config');
 const readline = require('readline');
 const BATCH_SIZE = process.env.WEATHER_BATCH_SIZE;
-const NUM_WORKERS = 1;
+const NUM_WORKERS = 4;
 let NUM_OF_PARAMS;
 
 // For worker thread code
@@ -286,9 +286,9 @@ class CSVGribDownloader {
                     this.totalRowsInFileProcessed += batch.length;
                     batch = [];
     
-                    const elapsedTime = (Date.now() - this.startTime) / 1000;
-                    showProgressBar(this.totalRowsInFileProcessed, 
-                        `[${elapsedTime.toFixed(1)}s - ${this.totalRowsInFileProcessed}]`);
+                    // const elapsedTime = (Date.now() - this.startTime) / 1000;
+                    // showProgressBar(this.totalRowsInFileProcessed, 
+                    //     `[${elapsedTime.toFixed(1)}s - ${this.totalRowsInFileProcessed}]`);
                 }
             }
     
@@ -312,11 +312,15 @@ class CSVGribDownloader {
             }
     
             await Promise.all(pendingBatches);
+            const elapsedTime = (Date.now() - this.startTime) / 1000;
+                    showProgressBar(this.totalRowsInFileProcessed, 
+                        `[${elapsedTime.toFixed(1)}s - ${this.totalRowsInFileProcessed}]`);
             console.log(`\nCompleted processing ${file}`);
         } finally {
             await Promise.all(workers.map(worker => worker.terminate()));
             await fs.promises.unlink(csvFile).catch(() => {});
             fileStream.destroy();
+            
         }
     }
     
@@ -488,6 +492,7 @@ class CSVGribDownloader {
 
     async initBatch() {
         try {
+            await delay(10000)
             console.log('Init Batch')
             // Ensure the pool is valid
             if (!this.pool) {
@@ -635,6 +640,8 @@ class CSVGribDownloader {
         }
     }
 
+    const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
     function showProgressBar(completed, message) {
         const barLength = 40;
         const bar = '='.repeat(barLength);
@@ -655,6 +662,7 @@ class CSVGribDownloader {
     // run();
     if (require.main === module) {
         const downloader = new CSVGribDownloader();
+         
         if (process.env.WEATHER_RUN === 'NOW') {
             downloader.downloadBatch().catch(console.error);
         } else if (process.env.WEATHER_RUN === 'DAILY') {
