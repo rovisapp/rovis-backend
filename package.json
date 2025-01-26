@@ -22,7 +22,7 @@
 
     
     "prestart:grib": "npm run docker:up",
-    "start:grib": "nodemon services/weather/gribdownloader.js",
+    "start:grib": "nodemon services/weather/csvgribdownloader.js",
     "poststart:grib": "npm run docker:down",
     "start:grib:clean": "npm run docker:down:clean && npm run docker:clean && npm run docker:build && npm run docker:up && npm run start:grib",
 

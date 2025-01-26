@@ -2,5 +2,6 @@
     "events": {
       "restart": "docker-compose -f docker/docker-compose.yml restart",
       "quit": "docker-compose -f docker/docker-compose.yml down"
-    }
+    },
+    "ignore": ["services/weather/temp/*"]
   }

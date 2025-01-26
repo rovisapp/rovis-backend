@@ -84,7 +84,7 @@ function showProgressBar(completed, total, message) {
     const percentage = Math.round(progress * 100);
 
     // Print the progress bar and percentage, overwriting the same line
-    // process.stdout.write(`\r${bar} ${percentage}% ${message}`);
+     process.stdout.write(`\r${bar} ${percentage}% ${message}`);
 }
 
 class GribDownloader {
@@ -739,7 +739,7 @@ class GribDownloader {
                     const elapsedTime = (Date.now() - this.startTime) / 1000;
                     showProgressBar(this.totalRowsInFileProcessed, this.totalRowsInFile,`[${elapsedTime.toFixed(1)}s - ${this.totalRowsInFileProcessed}/${this.totalRowsInFile} records - ${this.filesProcessed+1}/${this.totalFilesToProcess} files]` );
                     // Delay after each chunk (e.g., 50ms) Adding a delay after each batch or even between each database insert can significantly reduce CPU spikes, especially if the server is doing a lot of database operations
-                    await delay(1);
+                     await delay(1);
                 }
             }
     
@@ -747,7 +747,7 @@ class GribDownloader {
             
             // const percentage = Math.round((this.totalRowsInFileProcessed / this.totalRowsInFile) * 100);
             // console.log(`${elapsedTime.toFixed(1)}s : ${percentage}% of ${this.filesProcessed+1}/${this.totalFilesToProcess} files processing`);
-            await delay(1000);
+             await delay(10);
                     
         } catch (error) {
             await client.query('ROLLBACK');

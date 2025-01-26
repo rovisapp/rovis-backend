@@ -142,3 +142,5 @@ services/weather/temp/
 
 docker/postgres/data/
 docker/postgres/backup/
+
+env/
