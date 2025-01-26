@@ -28,7 +28,7 @@
 
     
     "prestart:prod:grib": "npm run docker:up",
-    "start:prod:grib": "node services/weather/gribdownloader.js",
+    "start:prod:grib": "node services/weather/csvgribdownloader.js",
     "poststart:prod:grib": "npm run docker:down",
     "start:prod:grib:clean": "npm run docker:down:clean && npm run docker:clean && npm run docker:build && npm run docker:up && npm run start:prod:grib"
 
