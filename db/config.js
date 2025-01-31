@@ -10,7 +10,7 @@ const pool = new Pool({
   port: 5432,
    max: 20, // maximum number of clients in the pool
    idleTimeoutMillis: 30000, // how long a client is allowed to remain idle before being closed
-   connectionTimeoutMillis: 2000, // how long to wait when connecting to a new client
+   connectionTimeoutMillis: 10000, // how long to wait when connecting to a new client
 
 });
 

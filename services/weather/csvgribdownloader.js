@@ -24,6 +24,7 @@ const pool = require('../../db/config');
 const readline = require('readline');
 const BATCH_SIZE = process.env.WEATHER_BATCH_SIZE;
 const NUM_WORKERS = 4;
+const PGOPS_MAXRETRIES = 3;
 let NUM_OF_PARAMS;
 
 
@@ -553,6 +554,21 @@ class CSVGribDownloader {
         }
     }
 
+    async withRetry(operation, maxRetries = PGOPS_MAXRETRIES) {
+        for (let i = 0; i < maxRetries; i++) {
+            try {
+                return await operation.bind(this)();
+            } catch (error) {
+                if (error.message.includes('timeout') && i < maxRetries - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 5000 * (i + 1)));
+                    continue;
+                }
+                throw error;
+            }
+        }
+    }
+
+
     async  indexDropOrCreate(DROP=0, CREATE=0) {
         const client = await pool.connect();
         try {
@@ -587,6 +603,17 @@ class CSVGribDownloader {
         await this.indexDropOrCreate(0,1)
     }
 
+    // Modify vacuum operation
+    async  performVacuum() {
+        const client = await this.pool.connect();
+        try {
+            await client.query('SET statement_timeout = 300000'); // 5 min timeout
+            await client.query('VACUUM ANALYZE forecasts;');
+        } finally {
+            client.release();
+        }
+    }
+
     async initBatch() {
         try {
             await delay(60000)
@@ -606,7 +633,7 @@ class CSVGribDownloader {
             const client = await this.pool.connect();
                 await client.query('TRUNCATE TABLE forecasts;');
                 console.log('Truncated forecasts table');
-                await this.dropIndex();
+                await this.withRetry(() => this.dropIndex());
                 console.log('Dropped Index on forecasts table');
             } catch (queryError) {
                 console.error('Error truncating or dropping index on forecasts table:', queryError);
@@ -682,13 +709,10 @@ class CSVGribDownloader {
                             console.log(`Processing ${filename}...`);
                             await this.processGribFile(filename);
                             this.filesProcessed++;
+                            console.log(`Performing vaccum ${filename}`);
+                            await this.withRetry(() => this.performVacuum());
                             console.log(`Completed processing ${filename}`);
-                            try {
-                                const client = await this.pool.connect();
-                                await client.query('VACUUM ANALYZE forecasts;');
-                            } finally {
-                                //client.release();
-                            }
+                            
                         } else {
                             console.log(`Skipping ${filename} - not available`);
                         }
@@ -697,17 +721,16 @@ class CSVGribDownloader {
                         if (this.shouldExit) {
                             break;
                         }
-                        // Continue with next file even if current fails
-                        // continue;
-                        break; // no- break if any file fails
+                        // 
+                        continue; // continue with next file even if current fails
+                        // break; // no- break if any file fails
                     }
                     
                 }
 
                 // recreate index
                 console.log('Recreating index');
-                await this.createIndex();
-                console.log('Recreating index');
+                await this.withRetry(() => this.createIndex());
     
                 return true;
             } catch (error) {
