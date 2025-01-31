@@ -2,15 +2,142 @@
 CREATE TABLE IF NOT EXISTS forecasts (
     geom GEOMETRY(Point, 4326),
     parameter VARCHAR(10),
-    values JSONB,
+    hour_000 NUMERIC,
+    hour_003 NUMERIC,
+    hour_006 NUMERIC,
+    hour_009 NUMERIC,
+    hour_012 NUMERIC,
+    hour_015 NUMERIC,
+    hour_018 NUMERIC,
+    hour_021 NUMERIC,
+    hour_024 NUMERIC,
+    hour_027 NUMERIC,
+    hour_030 NUMERIC,
+    hour_033 NUMERIC,
+    hour_036 NUMERIC,
+    hour_039 NUMERIC,
+    hour_042 NUMERIC,
+    hour_045 NUMERIC,
+    hour_048 NUMERIC,
+    hour_051 NUMERIC,
+    hour_054 NUMERIC,
+    hour_057 NUMERIC,
+    hour_060 NUMERIC,
+    hour_063 NUMERIC,
+    hour_066 NUMERIC,
+    hour_069 NUMERIC,
+    hour_072 NUMERIC,
+    hour_075 NUMERIC,
+    hour_078 NUMERIC,
+    hour_081 NUMERIC,
+    hour_084 NUMERIC,
+    hour_087 NUMERIC,
+    hour_090 NUMERIC,
+    hour_093 NUMERIC,
+    hour_096 NUMERIC,
+    hour_099 NUMERIC,
+    hour_102 NUMERIC,
+    hour_105 NUMERIC,
+    hour_108 NUMERIC,
+    hour_111 NUMERIC,
+    hour_114 NUMERIC,
+    hour_117 NUMERIC,
+    hour_120 NUMERIC,
+    hour_123 NUMERIC,
+    hour_126 NUMERIC,
+    hour_129 NUMERIC,
+    hour_132 NUMERIC,
+    hour_135 NUMERIC,
+    hour_138 NUMERIC,
+    hour_141 NUMERIC,
+    hour_144 NUMERIC,
+    hour_147 NUMERIC,
+    hour_150 NUMERIC,
+    hour_153 NUMERIC,
+    hour_156 NUMERIC,
+    hour_159 NUMERIC,
+    hour_162 NUMERIC,
+    hour_165 NUMERIC,
+    hour_168 NUMERIC,
+    hour_171 NUMERIC,
+    hour_174 NUMERIC,
+    hour_177 NUMERIC,
+    hour_180 NUMERIC,
+    hour_183 NUMERIC,
+    hour_186 NUMERIC,
+    hour_189 NUMERIC,
+    hour_192 NUMERIC,
+    hour_195 NUMERIC,
+    hour_198 NUMERIC,
+    hour_201 NUMERIC,
+    hour_204 NUMERIC,
+    hour_207 NUMERIC,
+    hour_210 NUMERIC,
+    hour_213 NUMERIC,
+    hour_216 NUMERIC,
+    hour_219 NUMERIC,
+    hour_222 NUMERIC,
+    hour_225 NUMERIC,
+    hour_228 NUMERIC,
+    hour_231 NUMERIC,
+    hour_234 NUMERIC,
+    hour_237 NUMERIC,
+    hour_240 NUMERIC,
+    hour_243 NUMERIC,
+    hour_246 NUMERIC,
+    hour_249 NUMERIC,
+    hour_252 NUMERIC,
+    hour_255 NUMERIC,
+    hour_258 NUMERIC,
+    hour_261 NUMERIC,
+    hour_264 NUMERIC,
+    hour_267 NUMERIC,
+    hour_270 NUMERIC,
+    hour_273 NUMERIC,
+    hour_276 NUMERIC,
+    hour_279 NUMERIC,
+    hour_282 NUMERIC,
+    hour_285 NUMERIC,
+    hour_288 NUMERIC,
+    hour_291 NUMERIC,
+    hour_294 NUMERIC,
+    hour_297 NUMERIC,
+    hour_300 NUMERIC,
+    hour_303 NUMERIC,
+    hour_306 NUMERIC,
+    hour_309 NUMERIC,
+    hour_312 NUMERIC,
+    hour_315 NUMERIC,
+    hour_318 NUMERIC,
+    hour_321 NUMERIC,
+    hour_324 NUMERIC,
+    hour_327 NUMERIC,
+    hour_330 NUMERIC,
+    hour_333 NUMERIC,
+    hour_336 NUMERIC,
+    hour_339 NUMERIC,
+    hour_342 NUMERIC,
+    hour_345 NUMERIC,
+    hour_348 NUMERIC,
+    hour_351 NUMERIC,
+    hour_354 NUMERIC,
+    hour_357 NUMERIC,
+    hour_360 NUMERIC,
+    hour_363 NUMERIC,
+    hour_366 NUMERIC,
+    hour_369 NUMERIC,
+    hour_372 NUMERIC,
+    hour_375 NUMERIC,
+    hour_378 NUMERIC,
+    hour_381 NUMERIC,
+    hour_384 NUMERIC,
     CONSTRAINT pk_forecasts PRIMARY KEY (geom, parameter)
 );
 
 -- Create indexes if they don't exist
-CREATE INDEX IF NOT EXISTS idx_forecasts_geom ON forecasts USING GIST(geom);
-CREATE INDEX IF NOT EXISTS idx_forecasts_param ON forecasts(parameter);
-CREATE INDEX IF NOT EXISTS idx_forecasts_jsonb ON forecasts USING GIN(values);
-CREATE UNIQUE INDEX IF NOT EXISTS forecasts_geom_parameter_idx ON forecasts(geom, parameter);
+-- CREATE INDEX IF NOT EXISTS idx_forecasts_geom ON forecasts USING GIST(geom);
+-- CREATE INDEX IF NOT EXISTS idx_forecasts_param ON forecasts(parameter);
+-- CREATE UNIQUE INDEX IF NOT EXISTS forecasts_geom_parameter_idx ON forecasts(geom, parameter);
 
 
 -- Drop constraint if it exists and recreate
@@ -21,21 +148,6 @@ CHECK (parameter IN (
     'RH', 'PWAT', 'CAPE', 'CIN', 'REFC'
 ));
 
--- Create or replace the function
-CREATE OR REPLACE FUNCTION insert_forecast(
-    lon FLOAT,
-    lat FLOAT,
-    param VARCHAR,
-    forecast_values JSONB
-) RETURNS VOID AS '
-    BEGIN
-        INSERT INTO forecasts (geom, parameter, values)
-        VALUES (
-            ST_SetSRID(ST_MakePoint(lon, lat), 4326),
-            param,
-            forecast_values
-        )
-        ON CONFLICT (geom, parameter) 
-        DO UPDATE SET values = EXCLUDED.values;
-    END;
-' LANGUAGE plpgsql;
+-- Lower fillfactor for frequent updates
+ALTER TABLE forecasts SET (fillfactor = 50);
+

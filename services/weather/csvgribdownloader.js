@@ -26,56 +26,6 @@ const BATCH_SIZE = process.env.WEATHER_BATCH_SIZE;
 const NUM_WORKERS = 4;
 let NUM_OF_PARAMS;
 
-// For worker thread code
-// if (require.main !== module) {
-//     const { parentPort, workerData } = require('worker_threads');
-//     const { parameters, forecastHour } = workerData;
-
-//     async function processBatch(batch) {
-//         const client = await pool.connect();
-//         try {
-//             await client.query('BEGIN');
-
-//             const values = batch.map(parts => {
-//                 const lat = parseFloat(parts[4]);
-//                 const lon = parseFloat(parts[5]);
-//                 const parameter = parts[2].replace(/"/g, '');
-//                 const value = parseFloat(parts[6].trim());
-//                 const jsonbValues = {};
-//                 jsonbValues[forecastHour] = value;
-
-//                 return `(ST_SetSRID(ST_MakePoint(${lon}, ${lat}), 4326), 
-//                         '${parameter}', 
-//                         '${JSON.stringify(jsonbValues)}'::jsonb)`;
-//             }).join(',');
-
-//             const query = `
-//                 INSERT INTO forecasts (geom, parameter, values)
-//                 VALUES ${values}
-//                 ON CONFLICT (geom, parameter) 
-//                 DO UPDATE SET 
-//                     values = forecasts.values || EXCLUDED.values;
-//             `;
-
-//             await client.query(query);
-//             await client.query('COMMIT');
-//         } catch (error) {
-//             await client.query('ROLLBACK');
-//             throw error;
-//         } finally {
-//             client.release();
-//         }
-//     }
-
-//     parentPort.on('message', async (batch) => {
-//         try {
-//             await processBatch(batch);
-//             parentPort.postMessage({ success: true });
-//         } catch (error) {
-//             parentPort.postMessage({ success: false, error: error.message });
-//         }
-//     });
-// }
 
 // Main GribDownloader class
 class CSVGribDownloader {
@@ -135,7 +85,12 @@ class CSVGribDownloader {
         await this.makeLandMask(file, baseFile);
         await this.makeCombinedLandMask(baseFile);
         await this.applyLandMask(baseFile);
+        await this.removeDupeAPCP(baseFile);
+        await this.removeDupePRATE(baseFile);
+
         await this.filterParameterandMakeCSV(baseFile);
+        // Uncomment the below version instead, if you want to run this downloader for 51.75,-176.75 as test
+        // filterParameterForTestPointandMakeCSV(baseFile)
         await this.deleteTempFiles(baseFile);
     }
 
@@ -180,15 +135,123 @@ class CSVGribDownloader {
             .join('|');
     
         return this.runWgrib2Command([
-            path.join(this.downloadDir, `${baseFile}.land.grb2`),
+            path.join(this.downloadDir, `${baseFile}.land.APCP.PRATE.deduped.grb2`),
             '-not', 'LAND',
             '-match', `(${matchPattern})`,
             '-csv', path.join(this.downloadDir, `${baseFile}.land.csv`)
         ]);
     }
 
+
+    /* This method is a quick way to execute this downloader for a given point.
+    Useful when debugging.
+     Command to run print the values for only 51.75,-176.75 is to add -undefine out-box -176.75:-176.75 51.75:51.75
+     wgrib2 gfs.t18z.pgrb2.0p25.f003.grib2 -undefine out-box -176.75:-176.75 51.75:51.75 -csv temp.csv > /dev/null && cat temp.csv && rm temp.csv
+    **/
+
+    // async filterParameterForTestPointandMakeCSV(baseFile) {
+    //     const matchPattern = Array.from(this.parameters.varsandlevels_nonLand.entries())
+    //         .map(([param, level]) => `${param}:${level}`)
+    //         .join('|');
+    
+    //     return this.runWgrib2Command([
+    //         path.join(this.downloadDir, `${baseFile}.land.APCP.PRATE.deduped.grb2`),
+    //         '-not', 'LAND',
+    //         '-match', `(${matchPattern})`,
+    //         '-undefine', 'out-box',
+    //         '-176.75:-176.75', '51.75:51.75',
+    //         '-csv', path.join(this.downloadDir, `${baseFile}.land.csv`)
+    //     ]);
+    // }
+
+    async removeDupeAPCP(baseFile) {
+        /*
+        This removes the duplicate APCP records as :
+
+        wgrib2 gfs.t18z.pgrb2.0p25.f003.grib2                                      
+
+1:0:d=2025011818:REFC:entire atmosphere:3 hour fcst:
+2:837288:d=2025011818:VIS:surface:3 hour fcst:
+3:1600695:d=2025011818:TMP:surface:3 hour fcst:
+4:2171704:d=2025011818:WEASD:surface:3 hour fcst:
+5:2689950:d=2025011818:SNOD:surface:3 hour fcst:
+6:3241393:d=2025011818:TMP:2 m above ground:3 hour fcst:
+7:4119108:d=2025011818:DPT:2 m above ground:3 hour fcst:
+8:4656604:d=2025011818:RH:2 m above ground:3 hour fcst:
+9:5443305:d=2025011818:PRATE:surface:3 hour fcst:
+10:6005105:d=2025011818:PRATE:surface:0-3 hour ave fcst:
+11:6588221:d=2025011818:APCP:surface:0-3 hour acc fcst: <--- Removes these values
+12:6876588:d=2025011818:APCP:surface:0-3 hour acc fcst:
+13:7164955:d=2025011818:CAPE:surface:3 hour fcst:
+14:7669108:d=2025011818:CIN:surface:3 hour fcst:
+15:7965849:d=2025011818:PWAT:entire atmosphere (considered as a single layer):3 hour fcst:
+16:9141216:d=2025011818:RH:entire atmosphere (considered as a single layer):3 hour fcst:
+17:9732579:d=2025011818:LAND:surface:3 hour fcst:
+        */
+        return this.runWgrib2Command([
+            path.join(this.downloadDir, `${baseFile}.land.grb2`),
+            '-if', 'APCP',
+            '-if_reg', '0',
+            '-grib', path.join(this.downloadDir, `${baseFile}.land.APCP.deduped.grb2`),
+            '-else',
+            '-rpn', 'sto_0',
+            '-endif',
+            '-else',
+            '-grib', path.join(this.downloadDir, `${baseFile}.land.APCP.deduped.grb2`),
+            '-endif'
+        ]);
+    }
+
+
+    async removeDupePRATE(baseFile) {
+        /*
+        This removes the duplicate PRATE records as :
+
+        wgrib2 gfs.t18z.pgrb2.0p25.f003.grib2                                      
+
+1:0:d=2025011818:REFC:entire atmosphere:3 hour fcst:
+2:837288:d=2025011818:VIS:surface:3 hour fcst:
+3:1600695:d=2025011818:TMP:surface:3 hour fcst:
+4:2171704:d=2025011818:WEASD:surface:3 hour fcst:
+5:2689950:d=2025011818:SNOD:surface:3 hour fcst:
+6:3241393:d=2025011818:TMP:2 m above ground:3 hour fcst:
+7:4119108:d=2025011818:DPT:2 m above ground:3 hour fcst:
+8:4656604:d=2025011818:RH:2 m above ground:3 hour fcst:
+9:5443305:d=2025011818:PRATE:surface:3 hour fcst: <--- Removes these values
+10:6005105:d=2025011818:PRATE:surface:0-3 hour ave fcst:
+11:6588221:d=2025011818:APCP:surface:0-3 hour acc fcst: 
+12:6876588:d=2025011818:APCP:surface:0-3 hour acc fcst:
+13:7164955:d=2025011818:CAPE:surface:3 hour fcst:
+14:7669108:d=2025011818:CIN:surface:3 hour fcst:
+15:7965849:d=2025011818:PWAT:entire atmosphere (considered as a single layer):3 hour fcst:
+16:9141216:d=2025011818:RH:entire atmosphere (considered as a single layer):3 hour fcst:
+17:9732579:d=2025011818:LAND:surface:3 hour fcst:
+        */
+        return this.runWgrib2Command([
+            path.join(this.downloadDir, `${baseFile}.land.APCP.deduped.grb2`),
+            '-if', 'PRATE',
+            '-if_reg', '0',
+            '-grib', path.join(this.downloadDir, `${baseFile}.land.APCP.PRATE.deduped.grb2`),
+            '-else',
+            '-rpn', 'sto_0',
+            '-endif',
+            '-else',
+            '-grib', path.join(this.downloadDir, `${baseFile}.land.APCP.PRATE.deduped.grb2`),
+            '-endif'
+        ]);
+    }
+
+
+
     async deleteTempFiles(baseFile) {
-        const extensions = ['.grib2', '.landmask.grb2', '.combined.grb2', '.land.grb2'];
+        const extensions = [
+            '.grib2',
+            '.landmask.grb2',
+            '.combined.grb2',
+            '.land.grb2',
+            '.land.APCP.deduped.grb2',
+            '.land.APCP.PRATE.deduped.grb2'
+        ];
         await Promise.all(
             extensions.map(ext => 
                 fs.promises.unlink(path.join(this.downloadDir, `${baseFile}${ext}`)).catch(() => {})
@@ -490,9 +553,43 @@ class CSVGribDownloader {
         }
     }
 
+    async  indexDropOrCreate(DROP=0, CREATE=0) {
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            
+            
+            if (DROP==1){
+                await client.query('DROP INDEX IF EXISTS forecasts_geom_parameter_idx;');
+            }
+            if(CREATE==1){
+                await client.query(`
+                CREATE UNIQUE INDEX IF NOT EXISTS forecasts_geom_parameter_idx ON forecasts(geom, parameter);
+                `);
+            }
+            
+            
+            await client.query('COMMIT');
+        } catch (error) {
+            console.error('Error creating final index:', error);
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
+    }
+
+    async dropIndex(){
+        await this.indexDropOrCreate(1,0)
+    }
+
+    async createIndex(){
+        await this.indexDropOrCreate(0,1)
+    }
+
     async initBatch() {
         try {
-            await delay(10000)
+            await delay(60000)
             console.log('Init Batch')
             // Ensure the pool is valid
             if (!this.pool) {
@@ -502,13 +599,17 @@ class CSVGribDownloader {
             
             
             try {
+                console.log('Deleting previous /services/weather/tmp files')
+                await this.deleteAllfiles();
                 console.log('Will truncate TABLE forecasts')
                 // Use a more robust query with error handling
             const client = await this.pool.connect();
                 await client.query('TRUNCATE TABLE forecasts;');
                 console.log('Truncated forecasts table');
+                await this.dropIndex();
+                console.log('Dropped Index on forecasts table');
             } catch (queryError) {
-                console.error('Error truncating forecasts table:', queryError);
+                console.error('Error truncating or dropping index on forecasts table:', queryError);
                 throw queryError;
             } finally {
                 // Always release the client back to the pool
@@ -532,6 +633,18 @@ class CSVGribDownloader {
         generateFileNumbers() {
             return Array.from({ length: process.env.WEATHER_NUMOFFORECASTS }, (_, i) => i * 3)
                 .map(num => `f${num.toString().padStart(3, '0')}`);
+        }
+
+        async deleteAllfiles(){
+            try {
+                // Cleanup any remaining files in download directory
+                const files = fs.readdirSync(this.downloadDir);
+                for (const file of files) {
+                     fs.unlinkSync(path.join(this.downloadDir, file));
+                }
+            } catch (error) {
+                console.error('Error cleaning up download directory:', error);
+            }
         }
     
         async downloadBatch() {
@@ -570,6 +683,12 @@ class CSVGribDownloader {
                             await this.processGribFile(filename);
                             this.filesProcessed++;
                             console.log(`Completed processing ${filename}`);
+                            try {
+                                const client = await this.pool.connect();
+                                await client.query('VACUUM ANALYZE forecasts;');
+                            } finally {
+                                //client.release();
+                            }
                         } else {
                             console.log(`Skipping ${filename} - not available`);
                         }
@@ -584,6 +703,11 @@ class CSVGribDownloader {
                     }
                     
                 }
+
+                // recreate index
+                console.log('Recreating index');
+                await this.createIndex();
+                console.log('Recreating index');
     
                 return true;
             } catch (error) {
@@ -599,6 +723,7 @@ class CSVGribDownloader {
                     for (const file of files) {
                          fs.unlinkSync(path.join(this.downloadDir, file));
                     }
+                    console.log('downloadBatch completed.')
                 } catch (error) {
                     console.error('Error cleaning up download directory:', error);
                 }
