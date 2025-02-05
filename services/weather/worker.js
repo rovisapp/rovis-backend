@@ -81,8 +81,8 @@ async function processBatch(batch) {
         const hourColumn = `hour_${forecastHour.toString().padStart(3, '0')}`;
 
         const values = batch.map(parts => {
-            const lat = parseFloat(parts[4]);
-            const lon = parseFloat(parts[5]);
+            const lon = parseFloat(parts[4]);
+            const lat = parseFloat(parts[5]);
             const parameter = parts[2].replace(/"/g, '');
             const value = parseFloat(parts[6].trim());
 
