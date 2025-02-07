@@ -1,5 +1,5 @@
 // snowAssessment.js
-const { normalizeValue, calculateConfidence } = require('../utils');
+const { normalizeValue, calculateConfidence, calculateWeightedScores } = require('../utils');
 
 class SnowAssessment {
   constructor(defaults) {
@@ -20,25 +20,70 @@ class SnowAssessment {
     };
   }
 
+  // calculateAccumulation(params) {
+  //   const config = this.config.ACCUMULATION;
+  //   return Math.min(1.0, Math.max(0.0,
+  //     normalizeValue(params.SNOD || 0, config.DEPTH.threshold) * config.DEPTH.weight +
+  //     normalizeValue(params.WEASD || 0, config.WATER_EQUIV.threshold) * config.WATER_EQUIV.weight +
+  //     normalizeValue((params.SNOWRATE || 0), config.RATE.threshold) * config.RATE.weight
+  //   ));
+  // }
+
+  // calculateTemperature(params) {
+  //   const config = this.config.TEMPERATURE;
+  //   const surfaceTemp = params.TMP_2M || 273.15;
+  //   const dewPoint = params.DPT_2M || 273.15;
+
+  //   return Math.min(1.0, Math.max(0.0,
+  //     (1 - normalizeValue(surfaceTemp, config.SURFACE.threshold)) * config.SURFACE.weight +
+  //     (1 - normalizeValue(dewPoint, config.DEW_POINT.threshold)) * config.DEW_POINT.weight
+  //   ));
+  // }
+
   calculateAccumulation(params) {
     const config = this.config.ACCUMULATION;
+    
     return Math.min(1.0, Math.max(0.0,
-      normalizeValue(params.SNOD || 0, config.DEPTH.threshold) * config.DEPTH.weight +
-      normalizeValue(params.WEASD || 0, config.WATER_EQUIV.threshold) * config.WATER_EQUIV.weight +
-      normalizeValue((params.SNOWRATE || 0), config.RATE.threshold) * config.RATE.weight
+      calculateWeightedScores([
+        {
+          value: params.SNOD,
+          threshold: config.DEPTH.threshold,
+          weight: config.DEPTH.weight
+        },
+        {
+          value: params.WEASD,
+          threshold: config.WATER_EQUIV.threshold,
+          weight: config.WATER_EQUIV.weight
+        },
+        {
+          value: params.SNOWRATE,
+          threshold: config.RATE.threshold,
+          weight: config.RATE.weight
+        }
+      ])
     ));
-  }
+}
 
-  calculateTemperature(params) {
+calculateTemperature(params) {
     const config = this.config.TEMPERATURE;
-    const surfaceTemp = params.TMP_2M || 273.15;
-    const dewPoint = params.DPT_2M || 273.15;
-
+    
     return Math.min(1.0, Math.max(0.0,
-      (1 - normalizeValue(surfaceTemp, config.SURFACE.threshold)) * config.SURFACE.weight +
-      (1 - normalizeValue(dewPoint, config.DEW_POINT.threshold)) * config.DEW_POINT.weight
+      calculateWeightedScores([
+        {
+          value: params.TMP_2M,
+          threshold: config.SURFACE.threshold,
+          weight: config.SURFACE.weight,
+          transform: (normalized) => 1 - normalized  // Inverse since lower temps = more snow
+        },
+        {
+          value: params.DPT_2M,
+          threshold: config.DEW_POINT.threshold,
+          weight: config.DEW_POINT.weight,
+          transform: (normalized) => 1 - normalized  // Inverse since lower dewpoint = more snow
+        }
+      ])
     ));
-  }
+}
 
   calculateAssessment(factors, params) {
     const severityScore = Object.entries(factors).reduce((score, [key, value]) => {

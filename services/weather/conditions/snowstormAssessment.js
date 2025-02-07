@@ -1,5 +1,5 @@
 // snowstormAssessment.js
-const { normalizeValue, calculateConfidence } = require('../utils');
+const { normalizeValue, calculateConfidence, calculateWeightedScores } = require('../utils');
 
 class SnowstormAssessment {
   constructor(defaults) {
@@ -20,41 +20,103 @@ class SnowstormAssessment {
     };
   }
 
-  calculateSnowConditions(params) {
-    const config = this.config.SNOW_CONDITIONS;
+//   calculateSnowConditions(params) {
+//     const config = this.config.SNOW_CONDITIONS;
     
-    // Calculate snow rate from precipitation rate if not directly available
-    const snowRate = params.SNOW_RATE || 
-      (((params.PRATE || 0) * 3600) * (params.CPOFP || 0) / 100);
+//     // Calculate snow rate from precipitation rate if not directly available
+//     const snowRate = params.SNOW_RATE || 
+//       (((params.PRATE || 0) * 3600) * (params.CPOFP || 0) / 100);
 
-    return Math.min(1.0, Math.max(0.0,
-      normalizeValue(snowRate, config.RATE.threshold) * config.RATE.weight +
-      (1 - normalizeValue(params.VIS || Infinity, config.VISIBILITY.threshold)) * 
-        config.VISIBILITY.weight +
-      normalizeValue(params.SNOD_RATE || 0, config.ACCUMULATION.threshold) * 
-        config.ACCUMULATION.weight
-    ));
-  }
+//     // Calculate change in snow depth over 3 hours (approximate accumulation rate)
+//     const snowAccumRate = params.SNOD ? params.SNOD / 3 : 0;
 
-  calculateWindConditions(params) {
-    const config = this.config.WIND_CONDITIONS;
+//     return Math.min(1.0, Math.max(0.0,
+//       normalizeValue(snowRate, config.RATE.threshold) * config.RATE.weight +
+//       (1 - normalizeValue(params.VIS || Infinity, config.VISIBILITY.threshold)) * 
+//         config.VISIBILITY.weight +
+//       normalizeValue(snowAccumRate, config.ACCUMULATION.threshold) * 
+//         config.ACCUMULATION.weight
+//     ));
+// }
+
+//   calculateWindConditions(params) {
+//     const config = this.config.WIND_CONDITIONS;
     
-    // Calculate wind speed from components if not directly available
-    const windSpeed = params.WIND_SPEED || 
-      Math.sqrt(Math.pow(params.UGRD_10M || 0, 2) + Math.pow(params.VGRD_10M || 0, 2));
+//     // Calculate wind speed from components if not directly available
+//     const windSpeed = params.WIND_SPEED || 
+//       Math.sqrt(Math.pow(params.UGRD_10M || 0, 2) + Math.pow(params.VGRD_10M || 0, 2));
 
-    return Math.min(1.0, Math.max(0.0,
-      normalizeValue(windSpeed, config.SPEED.threshold) * config.SPEED.weight +
-      normalizeValue(params.GUST || 0, config.GUST.threshold) * config.GUST.weight
-    ));
-  }
+//     return Math.min(1.0, Math.max(0.0,
+//       normalizeValue(windSpeed, config.SPEED.threshold) * config.SPEED.weight +
+//       normalizeValue(params.GUST || 0, config.GUST.threshold) * config.GUST.weight
+//     ));
+//   }
+
+calculateSnowConditions(params) {
+  const config = this.config.SNOW_CONDITIONS;
+  
+  // Calculate snow rate from precipitation rate if not directly available
+  const snowRate = params.SNOW_RATE !== undefined ? params.SNOW_RATE :
+    (params.PRATE !== undefined && params.CPOFP !== undefined) ?
+      (params.PRATE * 3600) * (params.CPOFP / 100) :
+      undefined;
+
+  // Calculate change in snow depth over 3 hours (approximate accumulation rate)
+  const snowAccumRate = params.SNOD !== undefined ? params.SNOD / 3 : undefined;
+
+  return Math.min(1.0, Math.max(0.0,
+    calculateWeightedScores([
+      {
+        value: snowRate,
+        threshold: config.RATE.threshold,
+        weight: config.RATE.weight
+      },
+      {
+        value: params.VIS,
+        threshold: config.VISIBILITY.threshold,
+        weight: config.VISIBILITY.weight,
+        transform: (normalized) => 1 - normalized  // Inverse for visibility
+      },
+      {
+        value: snowAccumRate,
+        threshold: config.ACCUMULATION.threshold,
+        weight: config.ACCUMULATION.weight
+      }
+    ])
+  ));
+}
+
+calculateWindConditions(params) {
+  const config = this.config.WIND_CONDITIONS;
+  
+  // Calculate wind speed from components if not directly available
+  const windSpeed = params.WIND_SPEED !== undefined ? params.WIND_SPEED :
+    (params.UGRD_10M !== undefined && params.VGRD_10M !== undefined) ?
+      Math.sqrt(Math.pow(params.UGRD_10M, 2) + Math.pow(params.VGRD_10M, 2)) :
+      undefined;
+
+  return Math.min(1.0, Math.max(0.0,
+    calculateWeightedScores([
+      {
+        value: windSpeed,
+        threshold: config.SPEED.threshold,
+        weight: config.SPEED.weight
+      },
+      {
+        value: params.GUST,
+        threshold: config.GUST.threshold,
+        weight: config.GUST.weight
+      }
+    ])
+  ));
+}
 
   calculateAssessment(factors, params) {
     const severityScore = Object.entries(factors).reduce((score, [key, value]) => {
       return score + value * this.config.SEVERITY_WEIGHTS[key];
     }, 0);
 
-    const requiredParams = ['VIS', 'UGRD_10M', 'VGRD_10M', 'SNOD_RATE'];
+    const requiredParams = ['VIS', 'UGRD_10M', 'VGRD_10M', 'SNOD'];
     const confidence = calculateConfidence(params, requiredParams);
 
     return {

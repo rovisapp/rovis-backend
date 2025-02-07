@@ -1,5 +1,5 @@
 // thunderstormAssessment.js
-const { normalizeValue, calculateConfidence } = require('../utils');
+const { normalizeValue, calculateConfidence, calculateWeightedScores } = require('../utils');
 
 class ThunderstormAssessment {
   constructor(defaults) {
@@ -20,25 +20,74 @@ class ThunderstormAssessment {
     };
   }
 
+  // calculateInstability(params) {
+  //   const config = this.config.INSTABILITY;
+  //   return Math.min(1.0, Math.max(0.0,
+  //     normalizeValue(params.CAPE || 0, config.CAPE.threshold) * config.CAPE.weight +
+  //     normalizeValue(Math.abs(params.CIN || 0), Math.abs(config.CIN.threshold)) * config.CIN.weight +
+  //     normalizeValue(Math.abs(params.LIFTED_INDEX || 0), Math.abs(config.LI.threshold)) * 
+  //       config.LI.weight
+  //   ));
+  // }
+
+  // calculateRadar(params) {
+  //   const config = this.config.RADAR;
+  //   return Math.min(1.0, Math.max(0.0,
+  //     normalizeValue(params.REFC || 0, config.REFL_COMPOSITE.threshold) * 
+  //       config.REFL_COMPOSITE.weight +
+  //     normalizeValue(params.ECHO_TOP || 0, config.ECHO_TOP.threshold) * config.ECHO_TOP.weight +
+  //     normalizeValue(params.VIL || 0, config.VIL.threshold) * config.VIL.weight
+  //   ));
+  // }
+
   calculateInstability(params) {
     const config = this.config.INSTABILITY;
+    
     return Math.min(1.0, Math.max(0.0,
-      normalizeValue(params.CAPE || 0, config.CAPE.threshold) * config.CAPE.weight +
-      normalizeValue(Math.abs(params.CIN || 0), Math.abs(config.CIN.threshold)) * config.CIN.weight +
-      normalizeValue(Math.abs(params.LIFTED_INDEX || 0), Math.abs(config.LI.threshold)) * 
-        config.LI.weight
+      calculateWeightedScores([
+        {
+          value: params.CAPE,
+          threshold: config.CAPE.threshold,
+          weight: config.CAPE.weight
+        },
+        {
+          value: params.CIN !== undefined ? Math.abs(params.CIN) : undefined,
+          threshold: Math.abs(config.CIN.threshold),
+          weight: config.CIN.weight
+        },
+        {
+          value: params.LIFTED_INDEX !== undefined ? Math.abs(params.LIFTED_INDEX) : undefined,
+          threshold: Math.abs(config.LI.threshold),
+          weight: config.LI.weight
+        }
+      ])
     ));
-  }
+}
 
-  calculateRadar(params) {
+calculateRadar(params) {
     const config = this.config.RADAR;
+    
     return Math.min(1.0, Math.max(0.0,
-      normalizeValue(params.REFC || 0, config.REFL_COMPOSITE.threshold) * 
-        config.REFL_COMPOSITE.weight +
-      normalizeValue(params.ECHO_TOP || 0, config.ECHO_TOP.threshold) * config.ECHO_TOP.weight +
-      normalizeValue(params.VIL || 0, config.VIL.threshold) * config.VIL.weight
+      calculateWeightedScores([
+        {
+          value: params.REFC,
+          threshold: config.REFL_COMPOSITE.threshold,
+          weight: config.REFL_COMPOSITE.weight
+        },
+        {
+          value: params.ECHO_TOP,
+          threshold: config.ECHO_TOP.threshold,
+          weight: config.ECHO_TOP.weight
+        },
+        {
+          value: params.VIL,
+          threshold: config.VIL.threshold,
+          weight: config.VIL.weight
+        }
+      ])
     ));
-  }
+}
+
 
   calculateAssessment(factors, params) {
     const severityScore = Object.entries(factors).reduce((score, [key, value]) => {

@@ -26,6 +26,9 @@ const BATCH_SIZE = process.env.WEATHER_BATCH_SIZE;
 const NUM_WORKERS = 4;
 const PGOPS_MAXRETRIES = 3;
 let NUM_OF_PARAMS;
+let KEEPCSVFILES = process.env.WEATHER_BATCH_KEEP_CSV_FILES;
+let RUNFORTESTCOORD = process.env.WEATHER_RUNFORTESTCOORDINATE!='-1'?1:0;
+const [RUNFORTESTCOORD_LON, RUNFORTESTCOORD_LAT] = process.env.WEATHER_RUNFORTESTCOORDINATE === '-1' ? [-1, -1] : (process.env.WEATHER_RUNFORTESTCOORDINATE || '').split('|').map(Number);
 
 
 // Main GribDownloader class
@@ -83,15 +86,21 @@ class CSVGribDownloader {
 
     async makeLandFileCSV(file) {
         const baseFile = path.basename(file, '.grib2');
-        await this.makeLandMask(file, baseFile);
-        await this.makeCombinedLandMask(baseFile);
-        await this.applyLandMask(baseFile);
+        // await this.makeLandMask(file, baseFile);
+        // await this.makeCombinedLandMask(baseFile);
+        // await this.applyLandMask(baseFile);
         await this.removeDupeAPCP(baseFile);
         await this.removeDupePRATE(baseFile);
 
-        await this.filterParameterandMakeCSV(baseFile);
-        // Uncomment the below version instead, if you want to run this downloader for 51.75,-176.75 as test
-        // filterParameterForTestPointandMakeCSV(baseFile)
+        if (RUNFORTESTCOORD==1){
+            // this will run the downloader for test coordinate defined in env file, as quick test
+            await this.filterParameterForTestPointandMakeCSV(baseFile)
+        } else {
+            // run for all coordinates
+            await this.filterParameterandMakeCSV(baseFile);
+        }
+        
+        // Uncomment the below version instead, 
         await this.deleteTempFiles(baseFile);
     }
 
@@ -146,24 +155,24 @@ class CSVGribDownloader {
 
     /* This method is a quick way to execute this downloader for a given point.
     Useful when debugging.
-     Command to run print the values for only 51.75,-176.75 is to add -undefine out-box -176.75:-176.75 51.75:51.75
+     Command to run print the values for only a lon, lat eg, 51.75,-176.75, is to add -undefine out-box -176.75:-176.75 51.75:51.75
      wgrib2 gfs.t18z.pgrb2.0p25.f003.grib2 -undefine out-box -176.75:-176.75 51.75:51.75 -csv temp.csv > /dev/null && cat temp.csv && rm temp.csv
     **/
 
-    // async filterParameterForTestPointandMakeCSV(baseFile) {
-    //     const matchPattern = Array.from(this.parameters.varsandlevels_nonLand.entries())
-    //         .map(([param, level]) => `${param}:${level}`)
-    //         .join('|');
+    async filterParameterForTestPointandMakeCSV(baseFile) {
+        const matchPattern = Array.from(this.parameters.varsandlevels_nonLand.entries())
+            .map(([param, level]) => `${param}:${level}`)
+            .join('|');
     
-    //     return this.runWgrib2Command([
-    //         path.join(this.downloadDir, `${baseFile}.land.APCP.PRATE.deduped.grb2`),
-    //         '-not', 'LAND',
-    //         '-match', `(${matchPattern})`,
-    //         '-undefine', 'out-box',
-    //         '-176.75:-176.75', '51.75:51.75',
-    //         '-csv', path.join(this.downloadDir, `${baseFile}.land.csv`)
-    //     ]);
-    // }
+        return this.runWgrib2Command([
+            path.join(this.downloadDir, `${baseFile}.land.APCP.PRATE.deduped.grb2`),
+            '-not', 'LAND',
+            '-match', `(${matchPattern})`,
+            '-undefine', 'out-box',
+            `${RUNFORTESTCOORD_LON}:${RUNFORTESTCOORD_LON}`, `${RUNFORTESTCOORD_LAT}:${RUNFORTESTCOORD_LAT}`,
+            '-csv', path.join(this.downloadDir, `${baseFile}.land.csv`)
+        ]);
+    }
 
     async removeDupeAPCP(baseFile) {
         /*
@@ -190,7 +199,8 @@ class CSVGribDownloader {
 17:9732579:d=2025011818:LAND:surface:3 hour fcst:
         */
         return this.runWgrib2Command([
-            path.join(this.downloadDir, `${baseFile}.land.grb2`),
+            // path.join(this.downloadDir, `${baseFile}.land.grb2`),
+            path.join(this.downloadDir, `${baseFile}.grib2`),
             '-if', 'APCP',
             '-if_reg', '0',
             '-grib', path.join(this.downloadDir, `${baseFile}.land.APCP.deduped.grb2`),
@@ -255,7 +265,7 @@ class CSVGribDownloader {
         ];
         await Promise.all(
             extensions.map(ext => 
-                fs.promises.unlink(path.join(this.downloadDir, `${baseFile}${ext}`)).catch(() => {})
+                 fs.promises.unlink(path.join(this.downloadDir, `${baseFile}${ext}`)).catch(() => {})
             )
         );
     }
@@ -322,8 +332,14 @@ class CSVGribDownloader {
                 const parameter = parts[2].replace(/"/g, '');
                 const parameterLevel = parts[3].replace(/"/g, '');
     
+                // if (!this.parameters.varsandlevels_nonLand.has(parameter) || 
+                //     this.parameters.varsandlevels_nonLand.get(parameter) !== parameterLevel) {
+                //     continue;
+                // }
+
+                // parameterLevel.includes() is the only way to make it work for PWAT:entire atmosphere (considered as a single layer)
                 if (!this.parameters.varsandlevels_nonLand.has(parameter) || 
-                    this.parameters.varsandlevels_nonLand.get(parameter) !== parameterLevel) {
+                !parameterLevel.includes(this.parameters.varsandlevels_nonLand.get(parameter)) ) {
                     continue;
                 }
     
@@ -382,7 +398,9 @@ class CSVGribDownloader {
             console.log(`\nCompleted processing ${file}`);
         } finally {
             await Promise.all(workers.map(worker => worker.terminate()));
-            await fs.promises.unlink(csvFile).catch(() => {});
+             if (KEEPCSVFILES==0){
+                await fs.promises.unlink(csvFile).catch(() => {});
+             } 
             fileStream.destroy();
             
         }
@@ -396,8 +414,7 @@ class CSVGribDownloader {
         try {
             await this.makeLandFileCSV(filePath);
             await this.processNonLandData(filePath);
-            // fs.unlinkSync(filePath);
-            // console.log(`Deleted processed file: ${filename}`);
+            
         } catch (error) {
             console.error(`Error processing file ${filename}:`, error);
             throw error;
@@ -665,9 +682,12 @@ class CSVGribDownloader {
         async deleteAllfiles(){
             try {
                 // Cleanup any remaining files in download directory
+                if (KEEPCSVFILES==1){
+                    return;
+                }
                 const files = fs.readdirSync(this.downloadDir);
                 for (const file of files) {
-                     fs.unlinkSync(path.join(this.downloadDir, file));
+                      fs.unlinkSync(path.join(this.downloadDir, file));
                 }
             } catch (error) {
                 console.error('Error cleaning up download directory:', error);
@@ -744,7 +764,8 @@ class CSVGribDownloader {
                     // Cleanup any remaining files in download directory
                     const files = fs.readdirSync(this.downloadDir);
                     for (const file of files) {
-                         fs.unlinkSync(path.join(this.downloadDir, file));
+                        if (KEEPCSVFILES==0)
+                          fs.unlinkSync(path.join(this.downloadDir, file));
                     }
                     console.log('downloadBatch completed.')
                 } catch (error) {

@@ -23,12 +23,12 @@ class WeatherAssessment {
       rain: new RainAssessment(this.config),
       snow: new SnowAssessment(this.config),
       fog: new FogAssessment(this.config),
-      wind: new WindAssessment(this.config),
+      // wind: new WindAssessment(this.config),
       thunderstorm: new ThunderstormAssessment(this.config),
-      snowstorm: new SnowstormAssessment(this.config),
-      icePotential: new IcePotentialAssessment(this.config),
-      temperatureSwing: new TemperatureSwingAssessment(this.config),
-      roadConditions: new RoadConditionsAssessment(this.config)
+      // snowstorm: new SnowstormAssessment(this.config),
+      // icePotential: new IcePotentialAssessment(this.config),
+      // temperatureSwing: new TemperatureSwingAssessment(this.config),
+      // roadConditions: new RoadConditionsAssessment(this.config)
     };
   }
 
@@ -56,27 +56,49 @@ class WeatherAssessment {
     };
   }
 
+  // calculateOverallAssessment(assessments) {
+  //   // Weight assessments by their confidence
+  //   const weightedSeverities = Object.values(assessments).map(assessment => ({
+  //     severity: this.severityToScore(assessment.severity),
+  //     confidence: assessment.confidence
+  //   }));
+
+  //   // Calculate weighted average severity
+  //   const totalConfidence = weightedSeverities.reduce((sum, a) => sum + a.confidence, 0);
+  //   const weightedSeverity = weightedSeverities.reduce((sum, a) => 
+  //     sum + (a.severity * a.confidence), 0) / totalConfidence;
+
+  //   // Calculate overall confidence
+  //   const overallConfidence = weightedSeverities.reduce((sum, a) => sum + a.confidence, 0) / 
+  //     weightedSeverities.length;
+
+  //   return {
+  //     severity: this.scoreToSeverity(weightedSeverity),
+  //     confidence: overallConfidence
+  //   };
+  // }
+
+
   calculateOverallAssessment(assessments) {
-    // Weight assessments by their confidence
-    const weightedSeverities = Object.values(assessments).map(assessment => ({
+    // Convert severities to scores to find highest
+    const severityScores = Object.values(assessments).map(assessment => ({
       severity: this.severityToScore(assessment.severity),
       confidence: assessment.confidence
     }));
-
-    // Calculate weighted average severity
-    const totalConfidence = weightedSeverities.reduce((sum, a) => sum + a.confidence, 0);
-    const weightedSeverity = weightedSeverities.reduce((sum, a) => 
-      sum + (a.severity * a.confidence), 0) / totalConfidence;
-
-    // Calculate overall confidence
-    const overallConfidence = weightedSeverities.reduce((sum, a) => sum + a.confidence, 0) / 
-      weightedSeverities.length;
-
+  
+    // Find highest severity score
+    const highestSeverityScore = Math.max(...severityScores.map(s => s.severity));
+  
+    // Calculate mean confidence
+    const overallConfidence = severityScores.reduce((sum, a) => sum + a.confidence, 0) / 
+      severityScores.length;
+  
     return {
-      severity: this.scoreToSeverity(weightedSeverity),
+      severity: this.scoreToSeverity(highestSeverityScore),
       confidence: overallConfidence
     };
   }
+
 
   identifyPrimaryConcerns(assessments) {
     return Object.entries(assessments)

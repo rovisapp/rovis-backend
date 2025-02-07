@@ -9,7 +9,7 @@ const {searchLocation, routebetweenLocations, locateStop, calculateStopsArray, r
 const {gsearch} = require('../services/gfaker');
 // const GribDownloader = require('../services/weather/gribdownloader')
 const pool = require('../db/config');
-const weatherresult = require('../services/weather/weathermain');
+const weatherresult =  require('../services/weather/weathermain');
 const { logErrorMiddleware, returnError } = require('../errorHandler/errorHandler');
 const api400Error = require('../errorHandler/api400Error');
 const api500Error = require('../errorHandler/api500Error');
@@ -26,28 +26,24 @@ app.use(express.json());
 
 //http://localhost:3070/api/user/weather
 app.get('/weather', async (req, res) => {
-  // res.json( {weatherresult} );
   const { low_lat, low_lon, high_lat, high_lon } = req.query;
   
   try {
-    const query = `
-      SELECT * FROM forecasts 
-      WHERE ST_Contains(
-        ST_MakeEnvelope($1, $2, $3, $4, 4326),
-        geom
-      )`;
-    
-    const result = await pool.query(query, [
-      low_lon, low_lat, 
-      high_lon, high_lat
-    ]);
-    
+      const bounds = {
+        low_lon: parseFloat(low_lon),
+          low_lat: parseFloat(low_lat),
+          high_lon: parseFloat(high_lon),
+          high_lat: parseFloat(high_lat)
+          
+      };
 
-    res.json(result.rows);
-  
+      const weatherResults = await weatherresult.queryAndAssessWeather(bounds);
+      console.log(`/weather: Returning weather for  ${weatherResults?.points.length||0} points`);
+      res.json(weatherResults);
+      
   } catch (error) {
-    console.error('Error fetching weather data:', error);
-    res.status(500).json({ error: error.message });
+      console.error('Error fetching weather data:', error);
+      res.status(500).json({ error: error.message });
   }
 });
 

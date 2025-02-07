@@ -21,7 +21,7 @@ const defaults = {
       },
       VISIBILITY_IMPACT: {
         VIS: {
-          threshold: 10000.0, // m considered clear visibility
+          threshold: 6000.0, // m considered clear visibility
           weight: 0.6,
           description: "Surface visibility"
         },
